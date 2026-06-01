@@ -48,7 +48,7 @@ graph LR
 - **Ordering Preservation**: Posted-priority arbitration with command lock so a selected command drains before re-arbitration.
 - **Integrity Checking**: CRC-8/CCITT on the command channel; a response with a bad checksum (or unknown kind) becomes a CXL **INVALID** completion.
 - **Link State Management**: A reset-drain FSM (`DOWN → UP → DRAIN → DOWN`) gates the bridge open only while the link is up and drains cleanly on link-down.
-- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), a Verilator coverage harness at **96.9%** line coverage, and concurrent **SVA** on all four valid/ready interfaces (runtime via Verilator `--assert` + proven in formal).
+- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), a Verilator coverage harness at **96.9%** line coverage, and concurrent **SVA** on all four valid/ready interfaces (runtime via Verilator `--assert` + proven in formal). A full **UVM** bench (`verification/uvm/`, scoreboard + functional coverage) targets commercial simulators (Cadence Xcelium).
 
 ## Current Architecture
 
@@ -105,6 +105,11 @@ make ci          # regress + coverage + sva + formal + cocotb
 
 Per-area Makefiles also run standalone, e.g. `make -C verification/directed stress`
 or `make -C verification/formal cxl_lpddr5x_bridge`.
+
+A full **UVM** testbench lives in `verification/uvm/` for use with commercial
+simulators (Cadence Xcelium): `make uvm` (or `make -C verification/uvm
+[smoke|random|err_inj]`). It is intentionally **not** part of the OSS CI gate and
+no-ops when `xrun` is absent — see [verification/uvm/README.md](verification/uvm/README.md).
 
 ### Waveform debugging
 

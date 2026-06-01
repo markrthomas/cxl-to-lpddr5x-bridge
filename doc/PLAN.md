@@ -30,6 +30,11 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   `make vlt-rand` (`sim/sim_rand.cpp`) drives randomized, protocol-legal traffic
   under `--trace --assert` and dumps a navigable VCD with cycle-stamped event
   markers; reproducible via `RAND_SEED` / `RAND_CYCLES`.
+- **UVM bench** (`verification/uvm/`): full UVM 1.2 env — CXL/LP agents, a
+  scoreboard with a reference-model translation check and per-class c2m ordering,
+  functional coverage, and smoke / random / err_inj tests. Targets Cadence
+  Xcelium (`make uvm`); degrades to a no-op without `xrun` and is deliberately
+  outside the OSS CI gate (commercial license).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
   vlt-rand/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
   regress → coverage / sva / random / cocotb / formal (the `random` job uploads
@@ -81,10 +86,10 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - **Verible lint + format**: add Google Verible style-lint + formatter as a
   non-blocking CI job for SV consistency; add a CI status badge and pinned
   OSS-tool versions to the README.
-- **UVM bench** (`verification/uvm/`): the `agents/env/seq/tb/tests` dirs are empty
-  placeholders. Either populate the VCS UVM env mirroring the cocotb scoreboard
-  (local-only, no CI license), or add a `README.md` + `.gitkeep` marking them as
-  reserved so the tree does not read as abandoned.
+- **UVM bench extensions**: the base env has landed (see Current state). Next:
+  a link-down/drain test (toggle `ctrl_vif.link_up`), constrained-random credit
+  stress, the parameter sweep above driven from UVM, and optionally a nightly run
+  on a licensed simulator.
 
 ## Long-term
 

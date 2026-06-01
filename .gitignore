@@ -19,6 +19,15 @@ doc/build/
 verification/formal/*/
 verification/formal/*_ci.sby
 
+# UVM / Xcelium (xrun) build + run artifacts
+verification/uvm/xcelium.d/
+verification/uvm/INCA_libs/
+verification/uvm/cov_work/
+verification/uvm/.simvision/
+verification/uvm/*.shm/
+verification/uvm/xrun.history
+verification/uvm/xrun.log
+
 # Common simulation/tool junk
 work/
 *.log

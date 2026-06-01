@@ -16,7 +16,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_lpddr5x_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb clean
+.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb uvm clean
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
@@ -35,6 +35,7 @@ help:
 	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
+	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
 	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
 	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
@@ -42,6 +43,7 @@ help:
 	@echo "  Subdirectory targets:"
 	@echo "    make -C verification/directed [sim|stress|vcd|gtkwave|lint|clean]"
 	@echo "    make -C verification/cocotb"
+	@echo "    make -C verification/uvm      [smoke|random|err_inj|run|waves|clean]  (Xcelium)"
 	@echo "    make -C verification/formal   [all|credit_counter|reset_drain|cxl_lpddr5x_bridge|clean]"
 
 # Verilator RTL lint (delegates to directed/, which runs verilator from repo root).
@@ -72,6 +74,12 @@ regress: lint sim
 # cocotb OSS UVM-equivalent tests (Icarus VPI).
 cocotb:
 	$(MAKE) -C verification/cocotb
+
+# Full UVM testbench (Cadence Xcelium). Commercial-simulator bench, deliberately
+# kept out of the OSS CI gate; runs the smoke test by default and degrades to a
+# graceful no-op when xrun is not installed.
+uvm:
+	$(MAKE) -C verification/uvm
 
 # coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
 # Driven by the sim/sim_main.cpp C++ harness (~96.9% line coverage). If that file
@@ -190,4 +198,5 @@ ci: regress coverage sva formal cocotb
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
+	-$(MAKE) -C verification/uvm clean
 	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) sim/coverage.info
