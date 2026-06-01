@@ -90,7 +90,7 @@ The top-level packet model is a fixed 64-bit simulation format shared in both di
 All standard gates are exposed from the repo root (`make help` lists them):
 
 ```bash
-make regress     # Verilator lint + Icarus directed simulation (fast gate)
+make regress     # Verilator lint + Icarus directed sim + randomized SVA run (fast gate)
 make stress      # directed sim with heavy backpressure
 make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd
 make gtkwave     # make vcd, then open it in GTKWave with a saved signal layout
