@@ -92,6 +92,9 @@ All standard gates are exposed from the repo root (`make help` lists them):
 ```bash
 make regress     # Verilator lint + Icarus directed simulation (fast gate)
 make stress      # directed sim with heavy backpressure
+make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd
+make gtkwave     # make vcd, then open it in GTKWave with a saved signal layout
+make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)
 make coverage    # Verilator --coverage -> sim/coverage.info (96.9% lines)

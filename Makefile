@@ -16,7 +16,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_lpddr5x_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress coverage sva formal ci cocotb clean
+.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave coverage sva formal ci cocotb clean
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
@@ -24,6 +24,10 @@ help:
 	@echo "  make lint      — Verilator --lint-only on all RTL modules"
 	@echo "  make sim       — Icarus directed simulation (default + smoke)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
+	@echo "  make vcd       — Icarus sim dumping a VCD (verification/directed/build/waves.vcd)"
+	@echo "  make gtkwave   — make vcd, then open the VCD in GTKWave with a saved signal layout"
+	@echo "  make vlt-vcd   — Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd"
+	@echo "  make vlt-gtkwave — make vlt-vcd, then open the Verilator VCD in GTKWave"
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
@@ -48,6 +52,15 @@ sim:
 # Icarus simulation with heavy backpressure stress.
 stress:
 	$(MAKE) -C verification/directed stress
+
+# Dump a VCD waveform of the directed sim (verification/directed/build/waves.vcd).
+vcd:
+	$(MAKE) -C verification/directed vcd
+
+# Dump the VCD then open it in GTKWave with the saved signal layout
+# (verification/directed/cxl_lpddr5x_bridge.gtkw). Requires gtkwave on PATH.
+gtkwave:
+	$(MAKE) -C verification/directed gtkwave
 
 # fast CI gate.
 regress: lint sim
@@ -103,6 +116,35 @@ sva:
 	( cd $(SVA_DIR) && ./sim_sva ); \
 	echo "[SVA] interface assertions passed (Verilator --assert, 4 valid/ready ports)"
 
+# vlt-vcd: Verilator --trace build of the sim/sim_main.cpp stimulus. The harness
+# walks every opcode + both FIFOs full/empty + the CRC-INVALID and drain paths,
+# dumping the full hierarchy to sim/obj_dir_vcd/waves.vcd for GTKWave. -DVM_TRACE
+# arms the trace blocks in sim_main.cpp; verilated_vcd_c.cpp provides the writer.
+# Degrades to a stub (exit 0) if verilator or sim_main.cpp is absent.
+VCD_DIR := sim/obj_dir_vcd
+VLT_VCD := $(VCD_DIR)/waves.vcd
+vlt-vcd:
+	@set -e; \
+	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[VLT-VCD] verilator not on PATH; skipping"; exit 0; }; \
+	if [ ! -f sim/sim_main.cpp ]; then \
+		echo "[VLT-VCD] sim/sim_main.cpp not present; skipping"; \
+		exit 0; \
+	fi; \
+	rm -rf $(VCD_DIR); \
+	$(VERILATOR) --trace --coverage -cc $(BRIDGE_SRCS) --top-module cxl_lpddr5x_bridge \
+		--Mdir $(VCD_DIR) -Isrc -Wno-DECLFILENAME -Wno-WIDTH -Wno-fatal; \
+	$(MAKE) -C $(VCD_DIR) -f Vcxl_lpddr5x_bridge.mk; \
+	g++ -DVM_TRACE=1 -DVM_COVERAGE=1 -o $(VCD_DIR)/sim_vcd \
+		sim/sim_main.cpp $(VCD_DIR)/Vcxl_lpddr5x_bridge__ALL.a \
+		-I$(VCD_DIR) -I$(VERILATOR_INC) -I$(VERILATOR_INC)/vltstd \
+		$(VERILATOR_CPP) $(VERILATOR_INC)/verilated_vcd_c.cpp -pthread -lm; \
+	( cd $(VCD_DIR) && ./sim_vcd ); \
+	echo "[VLT-VCD] $(VLT_VCD) written"
+
+# Build the Verilator VCD then open it in GTKWave (requires gtkwave on PATH).
+vlt-gtkwave: vlt-vcd
+	gtkwave $(VLT_VCD)
+
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
 	$(MAKE) -C verification/formal
@@ -114,4 +156,4 @@ ci: regress coverage sva formal cocotb
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
-	rm -rf $(COV_DIR) $(SVA_DIR) sim/coverage.info
+	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) sim/coverage.info

@@ -13,9 +13,13 @@
 #include "Vcxl_lpddr5x_bridge.h"
 #include "verilated.h"
 #include "verilated_cov.h"
+#if VM_TRACE
+#include "verilated_vcd_c.h"  // built with `verilator --trace` (make vlt-vcd)
+#endif
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 // ---- packet kinds / opcodes (mirror src/cxl_lpddr5x_bridge_defs.vh) ----
 enum {
@@ -75,6 +79,19 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);
     Vcxl_lpddr5x_bridge* dut = new Vcxl_lpddr5x_bridge;
 
+#if VM_TRACE
+    // VCD tracing (only when built with --trace; see the vlt-vcd Makefile target).
+    // Output path defaults to "waves.vcd" in the cwd (the --Mdir), overridable
+    // with +vcd=<path>. The whole hierarchy is dumped (depth 99) for GTKWave.
+    Verilated::traceEverOn(true);
+    VerilatedVcdC* tfp = new VerilatedVcdC;
+    dut->trace(tfp, 99);
+    const char* vcd_path = "waves.vcd";
+    for (int i = 1; i < argc; ++i)
+        if (!strncmp(argv[i], "+vcd=", 5)) vcd_path = argv[i] + 5;
+    tfp->open(vcd_path);
+#endif
+
     dut->rst_n = 0;
     dut->clk = 0;
     dut->mem_clk = 0;
@@ -113,6 +130,9 @@ int main(int argc, char** argv) {
         dut->clk = clk;
         dut->mem_clk = mem;
         dut->eval();
+#if VM_TRACE
+        tfp->dump((uint64_t)t);  // post-eval values at time t
+#endif
 
         int clk_rise = (clk == 1 && prev_clk == 0);
         int mem_rise = (mem == 1 && prev_mem == 0);
@@ -163,6 +183,11 @@ int main(int argc, char** argv) {
     }
 
     dut->final();
+#if VM_TRACE
+    tfp->close();
+    delete tfp;
+    printf("[sim_cov] VCD written to %s\n", vcd_path);
+#endif
     VerilatedCov::write("coverage.dat");
     printf("[sim_cov] done: %ld clk cycles, %ld mem_clk cycles\n", clk_cyc, mem_cyc);
     delete dut;

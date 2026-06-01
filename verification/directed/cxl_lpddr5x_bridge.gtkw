@@ -1,0 +1,54 @@
+[*]
+[*] GTKWave save file — cxl_lpddr5x_bridge directed testbench
+[*] Opened by `make gtkwave` (or `make gtkwave` from the repo root).
+[*] Loaded alongside build/waves.vcd; groups the four valid/ready ports
+[*] plus clocks/reset/link control so the c2m and m2c paths read top-down.
+[*]
+[dumpfile] "build/waves.vcd"
+[timestart] 0
+[size] 1600 900
+[pos] -1 -1
+[treeopen] tb_cxl_lpddr5x_bridge.
+[sst_width] 260
+[signals_width] 300
+[sst_expanded] 1
+[sst_vpaned_height] 350
+@200
+-clocks / reset / link control
+@28
+tb_cxl_lpddr5x_bridge.clk
+tb_cxl_lpddr5x_bridge.mem_clk
+tb_cxl_lpddr5x_bridge.rst_n
+tb_cxl_lpddr5x_bridge.link_up
+tb_cxl_lpddr5x_bridge.err_inj_en
+tb_cxl_lpddr5x_bridge.drain_done
+@200
+-c2m request: CXL ingress (host -> bridge)
+@28
+tb_cxl_lpddr5x_bridge.cxl_in_valid
+tb_cxl_lpddr5x_bridge.cxl_in_ready
+@22
+tb_cxl_lpddr5x_bridge.cxl_in_data[63:0]
+@200
+-c2m request: LPDDR5X egress (bridge -> mem)
+@28
+tb_cxl_lpddr5x_bridge.lp_out_valid
+tb_cxl_lpddr5x_bridge.lp_out_ready
+@22
+tb_cxl_lpddr5x_bridge.lp_out_data[63:0]
+@200
+-m2c response: LPDDR5X ingress (mem -> bridge)
+@28
+tb_cxl_lpddr5x_bridge.lp_in_valid
+tb_cxl_lpddr5x_bridge.lp_in_ready
+@22
+tb_cxl_lpddr5x_bridge.lp_in_data[63:0]
+@200
+-m2c response: CXL egress (bridge -> host)
+@28
+tb_cxl_lpddr5x_bridge.cxl_out_valid
+tb_cxl_lpddr5x_bridge.cxl_out_ready
+@22
+tb_cxl_lpddr5x_bridge.cxl_out_data[63:0]
+[pattern_trace] 1
+[pattern_trace] 0
