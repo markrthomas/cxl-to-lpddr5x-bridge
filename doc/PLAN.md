@@ -5,7 +5,7 @@ interface, with credit-based flow control, async-FIFO clock-domain crossing, and
 per-message CRC validation. Verified with an OSS-only toolchain (Icarus +
 Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
-## Current state (2026-05-31)
+## Current state (2026-06-01)
 
 - **RTL** (`src/`): `cxl_lpddr5x_bridge` top + `async_fifo`, `cdc_sync`,
   `reset_sync`, `reset_drain`, `credit_counter`, `credit_pulse_sync`, and a
@@ -25,25 +25,71 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   opcode, both flow-control FIFOs to full/empty, the CRC-mismatch INVALID path,
   the error-injection window, and a link-down drain. `make coverage` emits
   `sim/coverage.info` at **96.9% line coverage** (above the 80% floor).
-- **Gates**: root `Makefile` exposes `lint/sim/regress/coverage/formal/ci/clean`;
-  `.github/workflows/ci.yml` runs regress → coverage / cocotb / formal.
+- **Waveform / debug**: `make vcd` / `make gtkwave` (Icarus directed TB + a saved
+  GTKWave layout) and `make vlt-vcd` (Verilator `--trace` of the coverage walk).
+  `make vlt-rand` (`sim/sim_rand.cpp`) drives randomized, protocol-legal traffic
+  under `--trace --assert` and dumps a navigable VCD with cycle-stamped event
+  markers; reproducible via `RAND_SEED` / `RAND_CYCLES`.
+- **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
+  vlt-rand/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
+  regress → coverage / sva / random / cocotb / formal (the `random` job uploads
+  its VCD as an artifact, `if: always()`, for debugging a failing run).
 
 ## Near-term
 
+- **RTL filelist (DRY)**: the module list is hand-maintained in four places (root
+  `Makefile`, `verification/directed`, `verification/cocotb`, the `.sby` files) —
+  adding a module means editing all four. Replace with a single `rtl.f` consumed
+  via `-f` so there is one source of truth.
+- **Coverage gate in CI**: the `coverage` job emits `sim/coverage.info` but does
+  not enforce the 80% floor, so coverage can silently regress. Add an
+  `lcov --summary` threshold check that fails CI below the floor. Pairs with
+  coverage closure below.
 - **Coverage closure**: chase the residual ~3% (8 lines in the bridge top, 1 in
   `reset_drain`) — mostly defensive/unreachable default branches; add cover-driven
   stimulus or waive with comments.
-- **cocotb negatives**: extend bad-CRC handling to mid-burst corruption and
-  credit-underflow attempts; add randomized opcode/length soak.
+- **Randomized soak + scoreboard**: `sim/sim_rand.cpp` checks *protocol* (SVA) but
+  not *data* — it cannot catch a wrong opcode translation or a payload corruption,
+  only the directed TB's scoreboard does and only on fixed vectors. Extend the
+  cocotb env with a randomized opcode/length soak driven by a reference-model
+  scoreboard so those bugs are caught end-to-end. Also add the bad-CRC negatives:
+  mid-burst corruption and credit-underflow attempts.
+- **Random seed breadth**: the CI `random` job runs one fixed seed. Add a small
+  seed matrix (and/or a scheduled nightly over many seeds) surfacing the failing
+  seed + VCD as artifacts; the harness already prints a replayable seed.
 
 ## Medium-term
 
+- **Parameter sweep**: every test runs the defaults (`FIFO_DEPTH=8`, all credits
+  8). Sweep `FIFO_DEPTH ∈ {2,8}` and `*_CREDITS ∈ {1,8}` across `sim_rand` /
+  cocotb to flush out depth/credit off-by-one and starvation bugs that hide at the
+  default.
+- **Synthesis smoke + CDC audit (Yosys)**: add `make synth`
+  (`yosys -p "read_verilog … ; synth ; stat"`) to catch inferred latches /
+  unintended priority logic and track cell/area as a regression signal — Yosys is
+  already in the pinned OSS CAD Suite. Add a structural CDC check that every
+  crossing goes through `cdc_sync` / `async_fifo` / `credit_pulse_sync`.
+- **Stronger invariant assertions**: beyond cover goals, assert `credit ≤ CREDITS`,
+  no FIFO write-when-full / read-when-empty, and `accepted_responses ==
+  returned_credits + in_flight`. These are the invariants most likely to break
+  under the parameter sweep. (Extends the formal credit-conservation work below.)
 - **Formal depth**: raise bridge BMC depth past 16 once a k-induction invariant
   closes the CDC sync-chain transient; add credit-conservation cover goals.
-- **UVM bench** (`verification/uvm/`): populate the VCS UVM env (agents/seq/env/
-  tests) mirroring the cocotb scoreboard; keep local-only (no CI license).
+- **Error/event counters**: expose read-only status counters (CRC errors, dropped
+  flits, FIFO high-water, drain events). Failures become observable in sim and
+  silicon, and the scoreboard gets concrete signals to check.
+- **Verible lint + format**: add Google Verible style-lint + formatter as a
+  non-blocking CI job for SV consistency; add a CI status badge and pinned
+  OSS-tool versions to the README.
+- **UVM bench** (`verification/uvm/`): the `agents/env/seq/tb/tests` dirs are empty
+  placeholders. Either populate the VCS UVM env mirroring the cocotb scoreboard
+  (local-only, no CI license), or add a `README.md` + `.gitkeep` marking them as
+  reserved so the tree does not read as abandoned.
 
 ## Long-term
 
-- LPDDR5X bank/timing scheduler model for end-to-end latency checks.
-- Synthesis + timing hooks; PDF design-spec build via the workspace Pandoc stack.
+- LPDDR5X bank/timing scheduler model for end-to-end latency checks; throughput
+  characterization vs credit / FIFO-depth settings (reuse the `sim_rand` beat
+  counters as a perf harness).
+- Synthesis + timing hooks beyond the smoke above; PDF design-spec build via the
+  workspace Pandoc stack.
