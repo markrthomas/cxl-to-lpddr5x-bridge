@@ -11,9 +11,9 @@ VERILATOR_INC  := $(VERILATOR_ROOT)/include
 VERILATOR_CPP  := $(VERILATOR_INC)/verilated.cpp $(VERILATOR_INC)/verilated_cov.cpp \
                   $(VERILATOR_INC)/verilated_threads.cpp
 
-BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
-               src/credit_pulse_sync.v src/reset_drain.v src/reset_sync.v \
-               src/cxl_lpddr5x_bridge.v
+# Core RTL source list — single source of truth (see rtl.f). Verilator runs from
+# the repo root, so the root-relative paths in rtl.f are used verbatim.
+BRIDGE_SRCS := $(shell grep -vE '^[[:space:]]*(#|$$)' rtl.f)
 COV_DIR := sim/obj_dir_cov
 
 .PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb uvm clean

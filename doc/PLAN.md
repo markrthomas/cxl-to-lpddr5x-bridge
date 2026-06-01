@@ -40,12 +40,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   regress → coverage / sva / random / cocotb / formal (the `random` job uploads
   its VCD as an artifact, `if: always()`, for debugging a failing run).
 
+## Completed
+
+- **[done 2026-06-01] RTL filelist (DRY)**: `rtl.f` at the repo root is now the
+  single source of truth for the core module list, consumed by the root `Makefile`
+  (Verilator, verbatim), `verification/directed` and `verification/cocotb` (with a
+  path prefix), and the directed Verilator lint (`-f rtl.f`). The formal
+  `cxl_lpddr5x_bridge.sby` keeps explicit reads (task-subdir path base) but its
+  bmc/cover duplication was collapsed and it points at `rtl.f` as canonical. All
+  OSS flows (regress / coverage / sva / vlt-rand / cocotb / formal) re-verified.
+
 ## Near-term
 
-- **RTL filelist (DRY)**: the module list is hand-maintained in four places (root
-  `Makefile`, `verification/directed`, `verification/cocotb`, the `.sby` files) —
-  adding a module means editing all four. Replace with a single `rtl.f` consumed
-  via `-f` so there is one source of truth.
 - **Coverage gate in CI**: the `coverage` job emits `sim/coverage.info` but does
   not enforce the 80% floor, so coverage can silently regress. Add an
   `lcov --summary` threshold check that fails CI below the floor. Pairs with

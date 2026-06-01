@@ -3,14 +3,8 @@ TOPLEVEL_LANG = verilog
 
 SRC_DIR := $(PWD)/../../src
 
-VERILOG_SOURCES = \
-    $(SRC_DIR)/async_fifo.v \
-    $(SRC_DIR)/credit_counter.v \
-    $(SRC_DIR)/credit_pulse_sync.v \
-    $(SRC_DIR)/reset_drain.v \
-    $(SRC_DIR)/cdc_sync.v \
-    $(SRC_DIR)/reset_sync.v \
-    $(SRC_DIR)/cxl_lpddr5x_bridge.v
+# Core RTL from the shared root filelist (rtl.f, repo-root-relative → absolute via $(PWD)/../../).
+VERILOG_SOURCES = $(addprefix $(PWD)/../../,$(shell grep -vE '^[[:space:]]*(#|$$)' $(PWD)/../../rtl.f))
 
 TOPLEVEL = cxl_lpddr5x_bridge
 MODULE   = test_cxl_lpddr5x_bridge

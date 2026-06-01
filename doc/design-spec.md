@@ -274,7 +274,6 @@ The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
 
 The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 
-- **Maintainability** -- a single `rtl.f` filelist (the module list is currently duplicated across the per-area Makefiles and `.sby` files).
 - **Coverage gate** -- enforce the 80% floor in the CI `coverage` job; close the residual ~3% (defensive default branches).
 - **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
 - **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
@@ -296,6 +295,7 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 # 11. Repository layout
 
 ```
+rtl.f                             core RTL filelist — single source of truth (root/directed/cocotb)
 src/                              RTL source + tb_cxl_lpddr5x_bridge.v + cxl_lpddr5x_bridge_defs.vh
 verification/
   cxl_lpddr5x_bridge_sva.sv       concurrent interface SVA (bound; Verilator --assert)

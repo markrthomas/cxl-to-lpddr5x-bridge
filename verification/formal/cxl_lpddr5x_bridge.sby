@@ -13,19 +13,14 @@ multiclock on
 smtbmc
 
 [script]
-# Yosys cwd is <taskdir>/src (e.g. formal/cxl_lpddr5x_bridge_bmc/src); repo RTL is three levels up.
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
-bmc: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_lpddr5x_bridge.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
-cover: read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_lpddr5x_bridge.v
+# Yosys cwd is <taskdir>/src (e.g. formal/cxl_lpddr5x_bridge_bmc/src); repo RTL is
+# three levels up. Module list mirrors /rtl.f — keep in sync when adding modules.
+# Unprefixed lines apply to all tasks, so bmc + cover share one copy.
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/async_fifo.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cdc_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_counter.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/credit_pulse_sync.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/reset_drain.v
+read_verilog -sv -DFORMAL -I../../../../src ../../../../src/cxl_lpddr5x_bridge.v
 prep -top cxl_lpddr5x_bridge
