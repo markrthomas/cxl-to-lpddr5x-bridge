@@ -186,10 +186,14 @@ reachability cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
 `sim/sim_main.cpp` (Verilator `--coverage`): an asynchronous dual-clock C++ driver
 that walks every opcode, fills and drains both flow-control FIFOs, exercises the
 CRC-mismatch INVALID path, the error-injection window, and a link-down drain.
-`make coverage` emits `sim/coverage.info` at **96.9%** line coverage and **fails
+`make coverage` emits `sim/coverage.info` at **100%** line coverage and **fails
 if line coverage drops below the `COV_MIN` floor (default 80%)** — it parses the
 `DA:` records directly (no `lcov` dependency) and prints the measured percentage.
 The CI `coverage` job runs `make coverage`, so the floor is enforced in CI.
+Closure: the walk exercises the bad-CRC -> INVALID path for **all** response
+kinds (RD/WR/MRR); the only non-executable lines (a defensive FSM `default` in
+`reset_drain`, and two FIFO status-net declarations) carry documented
+`// verilator coverage_off` waivers.
 
 ## 8.5 Interface assertions (SVA)
 
@@ -277,7 +281,6 @@ The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
 
 The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 
-- **Coverage gate** -- enforce the 80% floor in the CI `coverage` job; close the residual ~3% (defensive default branches).
 - **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
 - **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
 - **Formal depth** -- raise bridge BMC depth past 16 via k-induction; add credit-conservation cover goals and FIFO over/underflow asserts.

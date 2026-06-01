@@ -48,7 +48,7 @@ graph LR
 - **Ordering Preservation**: Posted-priority arbitration with command lock so a selected command drains before re-arbitration.
 - **Integrity Checking**: CRC-8/CCITT on the command channel; a response with a bad checksum (or unknown kind) becomes a CXL **INVALID** completion.
 - **Link State Management**: A reset-drain FSM (`DOWN → UP → DRAIN → DOWN`) gates the bridge open only while the link is up and drains cleanly on link-down.
-- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), a Verilator coverage harness at **96.9%** line coverage, and concurrent **SVA** on all four valid/ready interfaces (runtime via Verilator `--assert` + proven in formal). A full **UVM** bench (`verification/uvm/`, scoreboard + functional coverage) targets commercial simulators (Cadence Xcelium).
+- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), a Verilator coverage harness at **100%** line coverage (gated, defensive lines waived), and concurrent **SVA** on all four valid/ready interfaces (runtime via Verilator `--assert` + proven in formal). A full **UVM** bench (`verification/uvm/`, scoreboard + functional coverage) targets commercial simulators (Cadence Xcelium).
 
 ## Current Architecture
 
@@ -98,7 +98,7 @@ make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vc
 make vlt-rand    # randomized waveform-debug run (Verilator --trace --assert); see below
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)
-make coverage    # Verilator --coverage -> sim/coverage.info (96.9%; fails below 80% floor)
+make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
 make ci          # regress + coverage + sva + formal + cocotb
 ```

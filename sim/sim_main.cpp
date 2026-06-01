@@ -71,7 +71,9 @@ static const uint64_t M2C[] = {
     with_checksum(pack(KIND_MRR_RSP, RSP_OK,  0x15, 0x0002, 0x00, 0xC1, 0x00, 0)),
     with_checksum(pack(KIND_RD_RSP,  RSP_ERR, 0x11, 0x0040, 0x04, 0xA2, 0x00, 0)),
     with_checksum(pack(KIND_LP_ERROR, 0x0,    0x13, 0x0000, 0x00, 0x00, 0x00, 0)),
-    with_checksum(pack(KIND_RD_RSP,  RSP_OK,  0x14, 0x0040, 0x02, 0xB3, 0x00, 0)) ^ 0xAB, // bad CRC
+    with_checksum(pack(KIND_RD_RSP,  RSP_OK,  0x14, 0x0040, 0x02, 0xB3, 0x00, 0)) ^ 0xAB, // bad CRC -> INVALID (RD_RSP)
+    with_checksum(pack(KIND_WR_RSP,  RSP_OK,  0x16, 0x0040, 0x08, 0xB2, 0x00, 0)) ^ 0xAB, // bad CRC -> INVALID (WR_RSP)
+    with_checksum(pack(KIND_MRR_RSP, RSP_OK,  0x17, 0x0002, 0x00, 0xC2, 0x00, 0)) ^ 0xAB, // bad CRC -> INVALID (MRR_RSP)
 };
 static const int N_M2C = sizeof(M2C) / sizeof(M2C[0]);
 

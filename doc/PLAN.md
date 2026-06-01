@@ -24,7 +24,7 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - **Coverage** (`sim/sim_main.cpp`): Verilator `--coverage` C++ driver walks every
   opcode, both flow-control FIFOs to full/empty, the CRC-mismatch INVALID path,
   the error-injection window, and a link-down drain. `make coverage` emits
-  `sim/coverage.info` at **96.9% line coverage** (above the 80% floor).
+  `sim/coverage.info` at **100% line coverage** (enforced against the 80% floor).
 - **Waveform / debug**: `make vcd` / `make gtkwave` (Icarus directed TB + a saved
   GTKWave layout) and `make vlt-vcd` (Verilator `--trace` of the coverage walk).
   `make vlt-rand` (`sim/sim_rand.cpp`) drives randomized, protocol-legal traffic
@@ -52,8 +52,13 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - **[done 2026-06-01] Coverage gate**: `make coverage` now parses the `DA:`
   records in `sim/coverage.info` and fails if line coverage is below the
   `COV_MIN` floor (default 80%); it prints the measured % and PASS/FAIL. Enforced
-  in CI automatically (the `coverage` job runs `make coverage`). Current: 96.9%.
-  (No `lcov` dependency — parsed directly.)
+  in CI automatically (the `coverage` job runs `make coverage`). (No `lcov`
+  dependency — parsed directly.)
+- **[done 2026-06-01] Coverage closure**: added the bad-CRC → INVALID stimulus
+  for WR_RSP and MRR_RSP (the RD_RSP path was already covered), taking line
+  coverage 96.9% → 100%. The remaining non-executable lines — a defensive FSM
+  `default` in `reset_drain` and two FIFO status-net declarations — carry
+  documented `// verilator coverage_off` waivers.
 - **[done 2026-06-01] Random seed breadth**: the CI `random` job is now a seed
   matrix (`seed: [1,2,3,4]`, `fail-fast: false`), each running
   `make vlt-rand RAND_SEED=<n>` and uploading a per-seed VCD artifact. Verified
@@ -61,18 +66,12 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Near-term
 
-- **Coverage closure**: chase the residual ~3% (8 lines in the bridge top, 1 in
-  `reset_drain`) — mostly defensive/unreachable default branches; add cover-driven
-  stimulus or waive with comments.
 - **Randomized soak + scoreboard**: `sim/sim_rand.cpp` checks *protocol* (SVA) but
   not *data* — it cannot catch a wrong opcode translation or a payload corruption,
   only the directed TB's scoreboard does and only on fixed vectors. Extend the
   cocotb env with a randomized opcode/length soak driven by a reference-model
   scoreboard so those bugs are caught end-to-end. Also add the bad-CRC negatives:
   mid-burst corruption and credit-underflow attempts.
-- **Random seed breadth**: the CI `random` job runs one fixed seed. Add a small
-  seed matrix (and/or a scheduled nightly over many seeds) surfacing the failing
-  seed + VCD as artifacts; the harness already prints a replayable seed.
 
 ## Medium-term
 

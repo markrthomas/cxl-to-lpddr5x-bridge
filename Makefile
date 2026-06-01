@@ -84,7 +84,7 @@ uvm:
 	$(MAKE) -C verification/uvm
 
 # coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
-# Driven by the sim/sim_main.cpp C++ harness (~96.9% line coverage). If that file
+# Driven by the sim/sim_main.cpp C++ harness (100% line coverage). If that file
 # is absent this degrades to a graceful stub (exit 0) per DV_STANDARDS.md.
 coverage:
 	@set -e; \

@@ -33,7 +33,9 @@ module reset_drain (
         S_DOWN:  if ( link_up)   state <= S_UP;
         S_UP:    if (!link_up)   state <= S_DRAIN;
         S_DRAIN: if ( all_empty) state <= S_DOWN;
-        default:                 state <= S_DOWN;
+        // verilator coverage_off
+        default:                 state <= S_DOWN;  // defensive: unreachable — all 3 legal states enumerated; recovers from an illegal/X encoding
+        // verilator coverage_on
       endcase
     end
   end
