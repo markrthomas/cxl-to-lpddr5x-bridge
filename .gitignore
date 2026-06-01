@@ -1,0 +1,34 @@
+# Simulation and Documentation build artifacts
+verification/directed/build/
+verification/uvm/build/
+verification/cocotb/sim_build/
+verification/cocotb/__pycache__/
+verification/cocotb/**/*.pyc
+verification/cocotb/results.xml
+
+# Verilator coverage build artifacts
+sim/obj_dir_cov/
+sim/coverage.info
+doc/build/
+
+# SymbiYosys (Formal verification workdirs)
+# Generated next to the .sby files: one workdir per task, plus status dirs.
+verification/formal/*/
+verification/formal/*_ci.sby
+
+# Common simulation/tool junk
+work/
+*.log
+*.wlf
+*.vcd
+*.fsdb
+*.vpd
+*.jou
+*.pb
+*.str
+
+# Editor and Tooling
+.vscode/
+*.swp
+.codex
+NOTES

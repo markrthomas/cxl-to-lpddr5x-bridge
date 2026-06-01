@@ -1,0 +1,76 @@
+# CI: lint (Verilator) + directed simulation (Icarus) + coverage + cocotb + formal (SymbiYosys).
+# Standard job layout (see ../DV_STANDARDS.md): regress (fast gate) → coverage / cocotb / formal.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # Pin OSS CAD Suite for reproducible formal CI; bump when upgrading tools.
+  OSS_CAD_SUITE_VERSION: "2026-04-13"
+
+jobs:
+  regress:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog verilator
+
+      - name: Lint (Verilator) + directed simulation + stress
+        run: make regress && make stress
+
+  coverage:
+    needs: regress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Verilator coverage (cxl_lpddr5x_bridge)
+        run: make coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-info
+          path: sim/coverage.info
+          if-no-files-found: ignore
+
+  cocotb:
+    needs: regress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y iverilog
+          pip install cocotb==1.8.1
+
+      - name: cocotb OSS UVM-equivalent tests (cxl_lpddr5x_bridge)
+        run: make cocotb
+
+  formal:
+    needs: regress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
+
+      - name: SymbiYosys formal (bmc + cover; credit_counter, reset_drain, bridge)
+        run: make formal

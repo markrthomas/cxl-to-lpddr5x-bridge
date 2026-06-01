@@ -1,0 +1,18 @@
+[tasks]
+bmc
+cover
+
+[options]
+bmc: mode bmc
+bmc: depth 32
+cover: mode cover
+cover: depth 32
+
+[engines]
+smtbmc
+
+[script]
+# Yosys cwd is <taskdir>/src; repo RTL is three levels up.
+read_verilog -sv -DFORMAL ../../../../src/credit_counter.v
+prep -top credit_counter
+async2sync
