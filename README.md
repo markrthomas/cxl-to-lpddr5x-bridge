@@ -95,6 +95,7 @@ make stress      # directed sim with heavy backpressure
 make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd
 make gtkwave     # make vcd, then open it in GTKWave with a saved signal layout
 make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd
+make vlt-rand    # randomized waveform-debug run (Verilator --trace --assert); see below
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)
 make coverage    # Verilator --coverage -> sim/coverage.info (96.9% lines)
@@ -104,6 +105,28 @@ make ci          # regress + coverage + sva + formal + cocotb
 
 Per-area Makefiles also run standalone, e.g. `make -C verification/directed stress`
 or `make -C verification/formal cxl_lpddr5x_bridge`.
+
+### Waveform debugging
+
+Two ways to get a VCD for GTKWave:
+
+```bash
+make gtkwave      # Icarus directed TB (scoreboard, clock-ratio sweeps) + saved layout
+make vlt-rand     # randomized Verilator run tuned for waveform reading
+gtkwave sim/obj_dir_rand/waves.vcd
+```
+
+`make vlt-rand` (`sim/sim_rand.cpp`) drives randomized, protocol-legal traffic —
+random opcode mix, valid gaps, sink backpressure on both egress ports, link-down
+drain windows, and error-injection pulses — and dumps a short, navigable VCD. It
+runs under Verilator `--trace --assert`, so the interface SVA is live and a
+protocol violation aborts with the VCD intact. Runs are reproducible and print
+cycle-stamped event markers (sustained backpressure, link up/down, `drain_done`,
+error pulses) so you can jump straight to the interesting region:
+
+```bash
+make vlt-rand RAND_SEED=42 RAND_CYCLES=4000   # the seed is printed and replayable
+```
 
 ## Documentation
 

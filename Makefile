@@ -16,7 +16,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_lpddr5x_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave coverage sva formal ci cocotb clean
+.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb clean
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
@@ -28,6 +28,9 @@ help:
 	@echo "  make gtkwave   — make vcd, then open the VCD in GTKWave with a saved signal layout"
 	@echo "  make vlt-vcd   — Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd"
 	@echo "  make vlt-gtkwave — make vlt-vcd, then open the Verilator VCD in GTKWave"
+	@echo "  make vlt-rand  — randomized waveform-debug run (Verilator --trace --assert);"
+	@echo "                   reproducible: make vlt-rand RAND_SEED=42 RAND_CYCLES=4000"
+	@echo "  make vlt-rand-gtkwave — make vlt-rand, then open its VCD in GTKWave"
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
@@ -145,6 +148,37 @@ vlt-vcd:
 vlt-gtkwave: vlt-vcd
 	gtkwave $(VLT_VCD)
 
+# vlt-rand: randomized, reproducible waveform-debug run driven by sim/sim_rand.cpp.
+# Built with --trace (VCD out) AND --assert + the interface SVA bind, so a protocol
+# violation in the randomized traffic aborts the run with the VCD intact. Override
+# the seed / length with `make vlt-rand RAND_SEED=42 RAND_CYCLES=4000`.
+RAND_DIR    := sim/obj_dir_rand
+RAND_VCD    := $(RAND_DIR)/waves.vcd
+RAND_SEED   ?=
+RAND_CYCLES ?=
+vlt-rand:
+	@set -e; \
+	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[VLT-RAND] verilator not on PATH; skipping"; exit 0; }; \
+	if [ ! -f sim/sim_rand.cpp ]; then \
+		echo "[VLT-RAND] sim/sim_rand.cpp not present; skipping"; \
+		exit 0; \
+	fi; \
+	rm -rf $(RAND_DIR); \
+	$(VERILATOR) --trace --assert -cc $(BRIDGE_SRCS) verification/cxl_lpddr5x_bridge_sva.sv \
+		--top-module cxl_lpddr5x_bridge --Mdir $(RAND_DIR) -Isrc \
+		-Wno-DECLFILENAME -Wno-WIDTH -Wno-fatal; \
+	$(MAKE) -C $(RAND_DIR) -f Vcxl_lpddr5x_bridge.mk; \
+	g++ -o $(RAND_DIR)/sim_rand \
+		sim/sim_rand.cpp $(RAND_DIR)/Vcxl_lpddr5x_bridge__ALL.a \
+		-I$(RAND_DIR) -I$(VERILATOR_INC) -I$(VERILATOR_INC)/vltstd \
+		$(VERILATOR_CPP) $(VERILATOR_INC)/verilated_vcd_c.cpp -pthread -lm; \
+	( cd $(RAND_DIR) && ./sim_rand $(if $(RAND_SEED),+seed=$(RAND_SEED)) $(if $(RAND_CYCLES),+cycles=$(RAND_CYCLES)) ); \
+	echo "[VLT-RAND] $(RAND_VCD) written"
+
+# Run the randomized harness then open its VCD in GTKWave (requires gtkwave).
+vlt-rand-gtkwave: vlt-rand
+	gtkwave $(RAND_VCD)
+
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
 	$(MAKE) -C verification/formal
@@ -156,4 +190,4 @@ ci: regress coverage sva formal cocotb
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
-	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) sim/coverage.info
+	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) sim/coverage.info

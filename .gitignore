@@ -10,6 +10,7 @@ verification/cocotb/results.xml
 sim/obj_dir_cov/
 sim/obj_dir_sva/
 sim/obj_dir_vcd/
+sim/obj_dir_rand/
 sim/coverage.info
 doc/build/
 
