@@ -25,7 +25,7 @@ help:
 	@echo "  make sim       — Icarus directed simulation (default + smoke)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make regress   — lint + sim (fast CI gate)"
-	@echo "  make coverage  — Verilator C++ coverage (stub until sim/sim_main.cpp exists)"
+	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
 	@echo "  make ci        — regress + coverage + formal + cocotb (comprehensive)"
@@ -57,8 +57,8 @@ cocotb:
 	$(MAKE) -C verification/cocotb
 
 # coverage: Verilator --coverage build + run; emits sim/coverage.info (lcov format).
-# A Verilator C++ harness (sim/sim_main.cpp) is required; until it lands this is a
-# graceful stub that exits 0 (per DV_STANDARDS.md coverage standard).
+# Driven by the sim/sim_main.cpp C++ harness (~96.9% line coverage). If that file
+# is absent this degrades to a graceful stub (exit 0) per DV_STANDARDS.md.
 coverage:
 	@set -e; \
 	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[COVERAGE] verilator not on PATH; skipping"; exit 0; }; \

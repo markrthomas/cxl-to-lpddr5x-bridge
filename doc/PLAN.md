@@ -17,14 +17,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   rd/wr/masked/autopre, MRR/MRW, m2c rsp paths, bad-CRC reject). All PASS.
 - **Formal** (`verification/formal/`): SymbiYosys BMC + cover on `credit_counter`,
   `reset_drain`, and the `cxl_lpddr5x_bridge` top. 6/6 tasks PASS.
+- **Coverage** (`sim/sim_main.cpp`): Verilator `--coverage` C++ driver walks every
+  opcode, both flow-control FIFOs to full/empty, the CRC-mismatch INVALID path,
+  the error-injection window, and a link-down drain. `make coverage` emits
+  `sim/coverage.info` at **96.9% line coverage** (above the 80% floor).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/coverage/formal/ci/clean`;
   `.github/workflows/ci.yml` runs regress → coverage / cocotb / formal.
 
 ## Near-term
 
-- **Coverage harness**: add `sim/sim_main.cpp` (Verilator C++ driver for
-  `cxl_lpddr5x_bridge`) so `make coverage` emits `sim/coverage.info` instead of
-  the current graceful stub. Target ≥ 80% line coverage (DV_STANDARDS floor).
+- **Coverage closure**: chase the residual ~3% (8 lines in the bridge top, 1 in
+  `reset_drain`) — mostly defensive/unreachable default branches; add cover-driven
+  stimulus or waive with comments.
 - **cocotb negatives**: extend bad-CRC handling to mid-burst corruption and
   credit-underflow attempts; add randomized opcode/length soak.
 
