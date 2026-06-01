@@ -133,10 +133,27 @@ error pulses) so you can jump straight to the interesting region:
 make vlt-rand RAND_SEED=42 RAND_CYCLES=4000   # the seed is printed and replayable
 ```
 
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs a fast `regress` gate (lint + directed sim +
+stress), then fans out to parallel jobs that each depend on it:
+
+| Job | Command | Notes |
+|:---|:---|:---|
+| `regress` | `make regress && make stress` | Verilator lint + Icarus directed/stress |
+| `coverage` | `make coverage` | uploads `coverage.info` |
+| `sva` | `make sva` | interface SVA under Verilator `--assert` |
+| `random` | `make vlt-rand` | randomized run; uploads the VCD on failure |
+| `cocotb` | `make cocotb` | 12 cocotb tests |
+| `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite) |
+
+The UVM bench is **not** in CI (it needs a commercial simulator license).
+
 ## Documentation
 
-- **Design Specification**: [doc/design-spec.md](doc/design-spec.md) — architecture, opcode mapping, packet format, FSM, and verification.
+- **Design Specification**: [doc/design-spec.md](doc/design-spec.md) — architecture, opcode mapping, packet format, FSM, and the full verification/CI stack.
 - **Plan**: [doc/PLAN.md](doc/PLAN.md) — current state and phased roadmap.
+- **UVM bench**: [verification/uvm/README.md](verification/uvm/README.md) — UVM env structure, how to run with Xcelium, and porting notes.
 
 Build a PDF of the spec with `make -C doc` (requires `pandoc` + a LaTeX engine).
 
@@ -155,7 +172,7 @@ ratios (1:1, 2:1, 1:3) and traffic patterns.
 | Payload data | Header/control fields are modeled; multi-beat payload transport is not implemented. |
 | Memory model | The downstream side is a command/response abstraction; no bank/timing (tRCD/tRP/…) scheduler. |
 | Link training | `link_up` is an external input consumed by the reset-drain FSM; PHY training is out of scope. |
-| UVM | `verification/uvm/` is a placeholder for a VCS UVM bench; directed + cocotb tests are the executable regression baseline. |
+| UVM | A full UVM bench is present (`verification/uvm/`) but targets a commercial simulator (Xcelium) and is excluded from OSS CI; the OSS executable regression is directed + cocotb + randomized (`vlt-rand`) + formal. |
 
 ---
 *Experimental RTL — for educational and prototyping purposes.*

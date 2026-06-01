@@ -208,12 +208,79 @@ is stable while a transfer is stalled.
 The legacy procedural checker `cxl_lpddr5x_bridge_chk.v` (egress stability only)
 is retained for the Icarus directed flow, which cannot run concurrent SVA.
 
+## 8.6 Randomized stimulus and waveform debug
+
+`sim/sim_rand.cpp` (Verilator `--trace --assert`) is a reproducible randomized
+driver built for waveform debugging. It issues protocol-legal but randomized
+traffic -- random opcode mix (including invalid kinds), idle gaps, sink
+backpressure on both egress ports, link-down drain windows, and error-injection
+windows -- and dumps a short, navigable VCD. Because the interface SVA is bound
+under `--assert`, a protocol violation aborts the run with the VCD intact. Runs
+are reproducible (`make vlt-rand RAND_SEED=.. RAND_CYCLES=..`); the harness prints
+the seed and cycle-stamped event markers (sustained backpressure, link up/down,
+`drain_done`, error pulses) to speed navigation. It is gated in CI as a dedicated
+`random` job, which uploads the VCD as an artifact on failure.
+
+Waveforms are available from every simulation flow:
+
+| Target | Source | Output |
+|:---|:---|:---|
+| `make vcd` / `make gtkwave` | Icarus directed TB (scoreboard, clock-ratio sweeps) | `verification/directed/build/waves.vcd` (+ saved GTKWave layout `cxl_lpddr5x_bridge.gtkw`) |
+| `make vlt-vcd` | Verilator `--trace` of `sim/sim_main.cpp` | `sim/obj_dir_vcd/waves.vcd` |
+| `make vlt-rand` | Verilator randomized harness | `sim/obj_dir_rand/waves.vcd` |
+
+## 8.7 UVM testbench (commercial simulators)
+
+`verification/uvm/` is a full UVM 1.2 environment targeting Cadence Xcelium
+(`xrun`), complementing the OSS suites. Two agents drive the design through
+clocking blocks on the two asynchronous clocks: a **CXL-side agent** (request
+driver on `cxl_in`, completion-ready responder on `cxl_out`, monitor) and an
+**LPDDR5X-side agent** (response driver on `lp_in`, command-ready responder on
+`lp_out`, monitor). A **scoreboard** checks data end-to-end against a
+self-contained reference model -- a SystemVerilog port of `translate_cxl_to_lp` /
+`translate_lp_to_cxl` and the CRC-8 from the defs header. Because the bridge
+merges separate posted (WR/MRW) and non-posted (RD/MRR/invalid) FIFOs through a
+posted-priority arbiter, the c2m check keeps one ordered expected queue **per
+class**; m2c is a single ordered queue including the bad-CRC -> INVALID path.
+Functional coverage records the request opcode mix, response kind/status, valid
+vs corrupted CRC, and their crosses. Tests: `cxl_lpddr5x_smoke_test` (every
+opcode + a response burst), `cxl_lpddr5x_random_test` (randomized soak with
+backpressure), and `cxl_lpddr5x_err_inj_test` (injection windows; the scoreboard
+masks the bridge's bit-0 c2m flip).
+
+Run with `make uvm`, or `make -C verification/uvm [smoke|random|err_inj|waves]`.
+This bench needs a licensed UVM simulator and is **not** part of the OSS CI gate;
+every target degrades to a no-op when `xrun` is absent. See
+`verification/uvm/README.md` for structure and porting notes (VCS / Questa reuse
+the same source list).
+
+## 8.8 Continuous integration
+
+`.github/workflows/ci.yml` runs a fast `regress` gate, then fans out to parallel
+jobs that each `needs: regress`:
+
+| Job | Runs | Tools |
+|:---|:---|:---|
+| `regress` | `make regress && make stress` | iverilog, verilator |
+| `coverage` | `make coverage` (uploads `coverage.info`) | verilator |
+| `sva` | `make sva` | verilator |
+| `random` | `make vlt-rand` (uploads the VCD, `if: always()`) | verilator |
+| `cocotb` | `make cocotb` | iverilog, cocotb |
+| `formal` | `make formal` | OSS CAD Suite (pinned) |
+
+The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
+
 # 9. Roadmap (phased milestones)
 
-- **Coverage closure** -- chase the residual ~3% (defensive default branches).
-- **Negative tests** -- mid-burst CRC corruption, credit-underflow attempts, randomized opcode/length soak.
-- **Formal depth** -- raise bridge BMC depth past 16 via k-induction; add credit-conservation cover goals.
-- **UVM bench** -- populate `verification/uvm/` (VCS, local-only) mirroring the cocotb scoreboard.
+The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
+
+- **Maintainability** -- a single `rtl.f` filelist (the module list is currently duplicated across the per-area Makefiles and `.sby` files).
+- **Coverage gate** -- enforce the 80% floor in the CI `coverage` job; close the residual ~3% (defensive default branches).
+- **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
+- **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
+- **Formal depth** -- raise bridge BMC depth past 16 via k-induction; add credit-conservation cover goals and FIFO over/underflow asserts.
+- **Synthesis smoke + CDC audit** -- a Yosys `synth; stat` pass plus a structural check that every crossing goes through a synchronizer.
+- **UVM extensions** -- the base env has landed (§8.7); add a link-down/drain test, credit stress, and the parameter sweep driven from UVM.
 - **Memory model** -- LPDDR5X bank/timing scheduler for end-to-end latency checks.
 
 # 10. Implementation limits
@@ -224,20 +291,20 @@ is retained for the Icarus directed flow, which cannot run concurrent SVA.
 | Payload data | Header/control modeled; multi-beat payload transport not implemented. |
 | Memory model | Command/response abstraction; no bank/timing scheduler. |
 | Link training | `link_up` is an external input; PHY training is out of scope. |
-| UVM | Placeholder; directed + cocotb tests are the executable regression baseline. |
+| UVM | Full bench present (`verification/uvm/`, §8.7), but it targets a commercial simulator (Xcelium); the OSS executable regression is directed + cocotb + randomized (`vlt-rand`) + formal. |
 
 # 11. Repository layout
 
 ```
-src/                              RTL source + cxl_lpddr5x_bridge_defs.vh
+src/                              RTL source + tb_cxl_lpddr5x_bridge.v + cxl_lpddr5x_bridge_defs.vh
 verification/
   cxl_lpddr5x_bridge_sva.sv       concurrent interface SVA (bound; Verilator --assert)
-  directed/                       Icarus self-checking TB + Makefile
+  directed/                       Icarus self-checking TB + saved GTKWave layout + Makefile
   cocotb/                         cocotb tests + Python gold model
   formal/                         SymbiYosys .sby files + Makefile
-  uvm/                            VCS UVM bench (placeholder; local only)
-sim/                              Verilator coverage harness (sim_main.cpp)
+  uvm/                            full UVM 1.2 bench (Cadence Xcelium; not in CI)
+sim/                              Verilator harnesses: sim_main.cpp (coverage / SVA), sim_rand.cpp (randomized + waveform / --assert)
 doc/                              this spec, PLAN.md, PDF Makefile
-Makefile                          root gates: lint/sim/regress/coverage/formal/ci
-.github/workflows/ci.yml          regress -> coverage / cocotb / formal
+Makefile                          root gates: lint/sim/stress/regress/vcd/gtkwave/vlt-vcd/vlt-rand/coverage/sva/cocotb/uvm/formal/ci
+.github/workflows/ci.yml          regress -> coverage / sva / random / cocotb / formal
 ```
