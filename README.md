@@ -48,7 +48,7 @@ graph LR
 - **Ordering Preservation**: Posted-priority arbitration with command lock so a selected command drains before re-arbitration.
 - **Integrity Checking**: CRC-8/CCITT on the command channel; a response with a bad checksum (or unknown kind) becomes a CXL **INVALID** completion.
 - **Link State Management**: A reset-drain FSM (`DOWN → UP → DRAIN → DOWN`) gates the bridge open only while the link is up and drains cleanly on link-down.
-- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), and a Verilator coverage harness at **96.9%** line coverage.
+- **Robust Verification**: directed + stress (Icarus), 12 cocotb UVM-equivalent tests, SymbiYosys formal (BMC + cover), a Verilator coverage harness at **96.9%** line coverage, and concurrent **SVA** on all four valid/ready interfaces (runtime via Verilator `--assert` + proven in formal).
 
 ## Current Architecture
 
@@ -95,7 +95,8 @@ make stress      # directed sim with heavy backpressure
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)
 make coverage    # Verilator --coverage -> sim/coverage.info (96.9% lines)
-make ci          # regress + coverage + formal + cocotb
+make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
+make ci          # regress + coverage + sva + formal + cocotb
 ```
 
 Per-area Makefiles also run standalone, e.g. `make -C verification/directed stress`

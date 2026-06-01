@@ -16,7 +16,11 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - **cocotb** (`verification/cocotb/`): 12 OSS UVM-equivalent tests (c2m mem
   rd/wr/masked/autopre, MRR/MRW, m2c rsp paths, bad-CRC reject). All PASS.
 - **Formal** (`verification/formal/`): SymbiYosys BMC + cover on `credit_counter`,
-  `reset_drain`, and the `cxl_lpddr5x_bridge` top. 6/6 tasks PASS.
+  `reset_drain`, and the `cxl_lpddr5x_bridge` top. 6/6 tasks PASS. Includes
+  valid/ready protocol on all four interfaces (egress asserted, ingress assumed).
+- **Interface SVA** (`verification/cxl_lpddr5x_bridge_sva.sv`): concurrent SVA on
+  all four valid/ready ports (valid-stable, data-stable, handshake/stall cover),
+  bound to the DUT and run under Verilator `--assert` via `make sva`.
 - **Coverage** (`sim/sim_main.cpp`): Verilator `--coverage` C++ driver walks every
   opcode, both flow-control FIFOs to full/empty, the CRC-mismatch INVALID path,
   the error-injection window, and a link-down drain. `make coverage` emits

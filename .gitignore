@@ -6,8 +6,9 @@ verification/cocotb/__pycache__/
 verification/cocotb/**/*.pyc
 verification/cocotb/results.xml
 
-# Verilator coverage build artifacts
+# Verilator coverage / assertion build artifacts
 sim/obj_dir_cov/
+sim/obj_dir_sva/
 sim/coverage.info
 doc/build/
 

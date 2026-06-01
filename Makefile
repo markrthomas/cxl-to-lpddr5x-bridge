@@ -16,7 +16,7 @@ BRIDGE_SRCS := src/async_fifo.v src/cdc_sync.v src/credit_counter.v \
                src/cxl_lpddr5x_bridge.v
 COV_DIR := sim/obj_dir_cov
 
-.PHONY: help lint sim regress stress coverage formal ci cocotb clean
+.PHONY: help lint sim regress stress coverage sva formal ci cocotb clean
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
@@ -26,9 +26,10 @@ help:
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
+	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
-	@echo "  make ci        — regress + coverage + formal + cocotb (comprehensive)"
+	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
 	@echo "  Subdirectory targets:"
@@ -82,15 +83,35 @@ coverage:
 		echo "[COVERAGE] coverage.dat in $(COV_DIR) (install verilator for lcov export)"; \
 	fi
 
+# sva: bind verification/cxl_lpddr5x_bridge_sva.sv and run the sim/sim_main.cpp
+# stimulus under Verilator --assert, so the concurrent interface SVA (valid/data
+# stability on all four valid/ready ports) is checked at runtime. A failed
+# property aborts the run (non-zero exit). Degrades to a stub if verilator absent.
+SVA_DIR := sim/obj_dir_sva
+sva:
+	@set -e; \
+	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[SVA] verilator not on PATH; skipping"; exit 0; }; \
+	rm -rf $(SVA_DIR); \
+	$(VERILATOR) --assert --coverage -cc $(BRIDGE_SRCS) verification/cxl_lpddr5x_bridge_sva.sv \
+		--top-module cxl_lpddr5x_bridge --Mdir $(SVA_DIR) -Isrc \
+		-Wno-DECLFILENAME -Wno-WIDTH -Wno-fatal; \
+	$(MAKE) -C $(SVA_DIR) -f Vcxl_lpddr5x_bridge.mk; \
+	g++ -DVM_COVERAGE=1 -o $(SVA_DIR)/sim_sva \
+		sim/sim_main.cpp $(SVA_DIR)/Vcxl_lpddr5x_bridge__ALL.a \
+		-I$(SVA_DIR) -I$(VERILATOR_INC) -I$(VERILATOR_INC)/vltstd \
+		$(VERILATOR_CPP) -pthread -lm; \
+	( cd $(SVA_DIR) && ./sim_sva ); \
+	echo "[SVA] interface assertions passed (Verilator --assert, 4 valid/ready ports)"
+
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
 	$(MAKE) -C verification/formal
 
 # Comprehensive local run.
-ci: regress coverage formal cocotb
-	@echo "[CI] regress + coverage + formal + cocotb PASSED"
+ci: regress coverage sva formal cocotb
+	@echo "[CI] regress + coverage + sva + formal + cocotb PASSED"
 
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
-	rm -rf $(COV_DIR) sim/coverage.info
+	rm -rf $(COV_DIR) $(SVA_DIR) sim/coverage.info

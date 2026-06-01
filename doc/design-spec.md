@@ -188,6 +188,26 @@ that walks every opcode, fills and drains both flow-control FIFOs, exercises the
 CRC-mismatch INVALID path, the error-injection window, and a link-down drain.
 `make coverage` emits `sim/coverage.info` at **96.9%** line coverage (>= 80% floor).
 
+## 8.5 Interface assertions (SVA)
+
+The valid/ready contract is checked on **all four stream interfaces**
+(`cxl_in`, `lp_out`, `lp_in`, `cxl_out`): valid holds until a handshake, and data
+is stable while a transfer is stalled.
+
+- **Runtime SVA** -- `verification/cxl_lpddr5x_bridge_sva.sv` is a concurrent-SVA
+  checker bound to the DUT and run under Verilator `--assert` against the
+  `sim/sim_main.cpp` stimulus (`make sva`). It also carries per-interface
+  handshake/stall cover goals. (Icarus is not used here; its concurrent-SVA
+  support is insufficient.)
+- **Formal** -- the same contract is proved in SymbiYosys via the `` `ifdef FORMAL ``
+  block of `cxl_lpddr5x_bridge.v`: egress ports (`lp_out`, `cxl_out`) are
+  **asserted** (DUT obligation) and ingress ports (`cxl_in`, `lp_in`) are
+  **assumed** (environment contract), using the Yosys-supported immediate-assert
+  + `$past` style. Proofs start from a power-on reset (`initial assume(!rst_n)`).
+
+The legacy procedural checker `cxl_lpddr5x_bridge_chk.v` (egress stability only)
+is retained for the Icarus directed flow, which cannot run concurrent SVA.
+
 # 9. Roadmap (phased milestones)
 
 - **Coverage closure** -- chase the residual ~3% (defensive default branches).
@@ -211,6 +231,7 @@ CRC-mismatch INVALID path, the error-injection window, and a link-down drain.
 ```
 src/                              RTL source + cxl_lpddr5x_bridge_defs.vh
 verification/
+  cxl_lpddr5x_bridge_sva.sv       concurrent interface SVA (bound; Verilator --assert)
   directed/                       Icarus self-checking TB + Makefile
   cocotb/                         cocotb tests + Python gold model
   formal/                         SymbiYosys .sby files + Makefile

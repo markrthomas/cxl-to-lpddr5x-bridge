@@ -95,6 +95,9 @@ int main(int argc, char** argv) {
     int prev_clk = 0, prev_mem = 0;
     long clk_cyc = 0, mem_cyc = 0;
     int c2m_i = 0, m2c_i = 0;
+    // Preponed (pre-edge) ready samples: each ingress ready is constant between
+    // its own clock posedges, so last iteration's value is the SVA-sampled one.
+    int prev_cxl_in_ready = 0, prev_lp_in_ready = 0;
 
     for (uint64_t t = 1; t < T_END && !Verilated::gotFinish(); ++t) {
         int clk = (int)((t / CLK_H) & 1);
@@ -120,11 +123,19 @@ int main(int argc, char** argv) {
             // posted / non-posted FIFOs fill and cxl_in_ready deasserts.
             dut->lp_out_ready = (clk_cyc >= 500 && clk_cyc < 700) ? 0
                               : ((clk_cyc & 3) != 0);
-            // Drive / advance the upstream request stream.
-            if (dut->cxl_in_valid && dut->cxl_in_ready) c2m_i = (c2m_i + 1) % N_C2M;
-            int active = (clk_cyc >= 50);
-            dut->cxl_in_valid = active && ((clk_cyc % 5) != 4); // periodic gaps
-            dut->cxl_in_data = C2M[c2m_i];
+            // Drive the upstream request stream as a protocol-compliant producer:
+            // valid/data only change after a handshake or while idle, so valid is
+            // never withdrawn nor data altered mid-stall (see cxl_lpddr5x_bridge_sva).
+            // Use the *preponed* ready (value before this edge, captured last
+            // iteration) so the handshake matches SVA sampling semantics.
+            int accepted = dut->cxl_in_valid && prev_cxl_in_ready;
+            if (accepted) c2m_i = (c2m_i + 1) % N_C2M;
+            if (!dut->cxl_in_valid || accepted) {
+                int active = (clk_cyc >= 50);
+                int gap = ((clk_cyc % 5) == 4); // periodic idle cycles
+                dut->cxl_in_valid = active && !gap;
+                dut->cxl_in_data = C2M[c2m_i];
+            } // else valid && !ready: hold valid + data stable
         }
 
         if (mem_rise) {
@@ -133,14 +144,22 @@ int main(int argc, char** argv) {
             // completion FIFO fills and lp_in_ready deasserts.
             dut->cxl_out_ready = (mem_cyc >= 900 && mem_cyc < 1100) ? 0
                                : ((mem_cyc & 3) != 0);
-            if (dut->lp_in_valid && dut->lp_in_ready) m2c_i = (m2c_i + 1) % N_M2C;
-            int active = (mem_cyc >= 40);
-            dut->lp_in_valid = active && ((mem_cyc % 4) != 3);
-            dut->lp_in_data = M2C[m2c_i];
+            // Protocol-compliant producer on the LPDDR5X response ingress
+            // (preponed ready, as above).
+            int m_accepted = dut->lp_in_valid && prev_lp_in_ready;
+            if (m_accepted) m2c_i = (m2c_i + 1) % N_M2C;
+            if (!dut->lp_in_valid || m_accepted) {
+                int active = (mem_cyc >= 40);
+                int gap = ((mem_cyc % 4) == 3);
+                dut->lp_in_valid = active && !gap;
+                dut->lp_in_data = M2C[m2c_i];
+            } // else valid && !ready: hold valid + data stable
         }
 
         prev_clk = clk;
         prev_mem = mem;
+        prev_cxl_in_ready = dut->cxl_in_ready;
+        prev_lp_in_ready = dut->lp_in_ready;
     }
 
     dut->final();

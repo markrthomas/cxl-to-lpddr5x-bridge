@@ -399,6 +399,12 @@ module cxl_lpddr5x_bridge #(
   );
 
 `ifdef FORMAL
+  // Start every proof from a real power-on reset so the FIFOs/arbiter begin in
+  // their reset state (empty, unlocked) rather than an arbitrary, unreachable
+  // power-on state. Without this the egress data-stability checks below see
+  // garbage FIFO contents at t=0. (reset_drain / credit_counter do the same.)
+  initial assume (!rst_n);
+
   // Helper: checksum check for the m2c (response) direction.
   wire [63:0] f_m2c_chk_zero = {lp_in_data[63:8], 8'h00};
   wire        f_m2c_cs_ok    = (lp_in_data[7:0] == bridge_checksum(f_m2c_chk_zero));
@@ -512,6 +518,41 @@ module cxl_lpddr5x_bridge #(
       end
       if (!arb_locked_r && !c2m_posted_r_empty)
         assert (arb_sel_final == 1'b1);
+    end
+  end
+
+  // ---- Interface valid/ready protocol (matches verification/cxl_lpddr5x_bridge_sva.sv) ----
+  // Producer drives valid+data, consumer drives ready. Ingress ports are ASSUMED
+  // well-formed (environment contract); egress ports are ASSERTED (DUT obligation).
+  // clk-domain interfaces: cxl_in (ingress), cxl_out (egress).
+  always_ff @(posedge clk) begin
+    if (clk_rst_n && $past(clk_rst_n)) begin
+      // CXL request ingress
+      if ($past(cxl_in_valid) && !$past(cxl_in_ready)) begin
+        assume (cxl_in_valid);
+        assume (cxl_in_data == $past(cxl_in_data));
+      end
+      // CXL completion egress
+      if ($past(cxl_out_valid) && !$past(cxl_out_ready)) begin
+        assert (cxl_out_valid);
+        assert (cxl_out_data == $past(cxl_out_data));
+      end
+    end
+  end
+
+  // mem_clk-domain interfaces: lp_in (ingress), lp_out (egress).
+  always_ff @(posedge mem_clk) begin
+    if (mem_rst_n && $past(mem_rst_n)) begin
+      // LPDDR5X response ingress
+      if ($past(lp_in_valid) && !$past(lp_in_ready)) begin
+        assume (lp_in_valid);
+        assume (lp_in_data == $past(lp_in_data));
+      end
+      // LPDDR5X command egress
+      if ($past(lp_out_valid) && !$past(lp_out_ready)) begin
+        assert (lp_out_valid);
+        assert (lp_out_data == $past(lp_out_data));
+      end
     end
   end
 
