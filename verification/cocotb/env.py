@@ -200,6 +200,23 @@ def expect_cxl_from_lp(lp_pkt):
         return invalid
 
 
+# ---- Routing helpers (mirror is_posted() / arbiter classification in the RTL) ----
+
+def is_posted_kind(kind):
+    """True if a CXL request kind routes to the posted FIFO (WR / MRW)."""
+    return kind in (CXL_PKT_KIND_MEM_WR, CXL_PKT_KIND_MEM_MRW)
+
+
+def cmd_is_posted(flit):
+    """Classify an observed lp_out command into the posted (WR/WRA/MWR/MRW) or
+    non-posted (RD/RDA/MRR + ERROR) FIFO, matching the bridge's routing."""
+    k  = _get_field(flit, PKT_KIND_MSB, PKT_KIND_LSB)
+    op = _get_field(flit, PKT_CODE_MSB, PKT_CODE_LSB)
+    if k == LP_PKT_KIND_CMD:
+        return op in (LP_CMD_WR, LP_CMD_WRA, LP_CMD_MWR, LP_CMD_MRW)
+    return False  # ERROR (from an invalid kind) routes via the non-posted FIFO
+
+
 # ---- Reset ----
 
 async def reset_dut(dut, clk, mem_clk):

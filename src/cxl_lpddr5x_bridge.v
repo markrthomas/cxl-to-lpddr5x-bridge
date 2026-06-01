@@ -49,7 +49,12 @@ module cxl_lpddr5x_bridge #(
   // Link readiness and error injection
   input  wire                  link_up,
   input  wire                  err_inj_en,
-  output wire                  drain_done
+  output wire                  drain_done,
+  // Status counters (clk domain)
+  output reg  [15:0]           crc_err_cnt,
+  output reg  [15:0]           drain_cnt,
+  output reg  [7:0]            max_occ_c2m,
+  output reg  [7:0]            max_occ_m2c
 );
 
   generate
@@ -375,35 +380,88 @@ module cxl_lpddr5x_bridge #(
 
   // --- Async FIFOs ---
 
+  wire [$clog2(FIFO_DEPTH):0] c2m_p_occ;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_c2m_posted (
     .w_clk   (clk),           .w_rst_n(clk_rst_n),
     .w_en    (c2m_posted_wr), .w_data (c2m_wr_data), .w_full (c2m_posted_w_full),
+    .w_occupancy(c2m_p_occ),
     .r_clk   (mem_clk),       .r_rst_n(mem_rst_n),
     .r_en    (c2m_posted_rd), .r_data (c2m_posted_rd_data), .r_empty(c2m_posted_r_empty)
   );
 
+  wire [$clog2(FIFO_DEPTH):0] c2m_np_occ;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_c2m_np (
     .w_clk   (clk),       .w_rst_n(clk_rst_n),
     .w_en    (c2m_np_wr), .w_data (c2m_wr_data), .w_full (c2m_np_w_full),
+    .w_occupancy(c2m_np_occ),
     .r_clk   (mem_clk),   .r_rst_n(mem_rst_n),
     .r_en    (c2m_np_rd), .r_data (c2m_np_rd_data), .r_empty(c2m_np_r_empty)
   );
 
+  wire [$clog2(FIFO_DEPTH):0] m2c_occ_mem;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
   ) u_m2c (
     .w_clk   (mem_clk), .w_rst_n(mem_rst_n),
     .w_en    (m2c_wr),  .w_data (m2c_wr_data), .w_full (m2c_w_full),
+    .w_occupancy(m2c_occ_mem),
     .r_clk   (clk),     .r_rst_n(clk_rst_n),
     .r_en    (m2c_rd),  .r_data (m2c_rd_data),  .r_empty(m2c_r_empty)
   );
+
+  // --- Status counter logic (clk domain) ---
+
+  // M2C CRC error detection (mem_clk domain)
+  wire [WIDTH-1:0] m2c_chk_pkt = {lp_in_data[WIDTH-1:8], 8'h00};
+  wire m2c_crc_err_mem = lp_in_valid && lp_in_ready &&
+                         (lp_in_data[PKT_MISC_MSB:PKT_MISC_LSB] != bridge_checksum(m2c_chk_pkt));
+
+  // Pulse synchronizer for CRC error count (mem_clk -> clk)
+  wire m2c_crc_err_clk;
+  credit_pulse_sync u_crc_err_sync (
+    .src_clk(mem_clk), .src_rst_n(mem_rst_n), .src_pulse(m2c_crc_err_mem),
+    .dst_clk(clk),     .dst_rst_n(clk_rst_n), .dst_pulse(m2c_crc_err_clk)
+  );
+
+  // Synchronize m2c occupancy to clk domain for high-water tracking
+  // Using a simple 2-flop sync for the occupancy bits (multi-bit Gray code would be
+  // safer but this is just for status/observability).
+  reg [$clog2(FIFO_DEPTH):0] m2c_occ_clk;
+  always @(posedge clk or negedge clk_rst_n) begin
+    if (!clk_rst_n) m2c_occ_clk <= 0;
+    else            m2c_occ_clk <= m2c_occ_mem; // Note: small risk of glitchy reads
+  end
+
+  reg link_up_clk_q;
+  always @(posedge clk or negedge clk_rst_n) begin
+    if (!clk_rst_n) begin
+      crc_err_cnt   <= 16'h0000;
+      drain_cnt     <= 16'h0000;
+      max_occ_c2m   <= 8'h00;
+      max_occ_m2c   <= 8'h00;
+      link_up_clk_q <= 1'b0;
+    end else begin
+      link_up_clk_q <= link_up_clk;
+      
+      if (m2c_crc_err_clk && crc_err_cnt != 16'hFFFF)
+        crc_err_cnt <= crc_err_cnt + 1'b1;
+      
+      if (link_up_clk_q && !link_up_clk && drain_cnt != 16'hFFFF)
+        drain_cnt <= drain_cnt + 1'b1;
+
+      if ({3'b0, c2m_p_occ}  > max_occ_c2m) max_occ_c2m <= {3'b0, c2m_p_occ};
+      if ({3'b0, c2m_np_occ} > max_occ_c2m) max_occ_c2m <= {3'b0, c2m_np_occ};
+
+      if ({3'b0, m2c_occ_clk} > max_occ_m2c) max_occ_m2c <= {3'b0, m2c_occ_clk};
+    end
+  end
 
 `ifdef FORMAL
   // Start every proof from a real power-on reset so the FIFOs/arbiter begin in
@@ -584,6 +642,25 @@ module cxl_lpddr5x_bridge #(
       cover (lp_in_valid && lp_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == LP_PKT_KIND_WR_RSP);
       cover (lp_in_valid && lp_in_data[PKT_KIND_MSB:PKT_KIND_LSB] == LP_PKT_KIND_MRR_RSP);
       cover (c2m_posted_rd && !c2m_np_r_empty);
+    end
+  end
+
+  // ---- Invariant Assertions ----
+  // No FIFO overflow/underflow. Redundant with async_fifo internally, but
+  // ensures the top-level gating logic (credits/ready) is perfectly aligned.
+  always @(posedge clk) begin
+    if (clk_rst_n) begin
+      if (c2m_posted_wr) assert (!c2m_posted_w_full);
+      if (c2m_np_wr)     assert (!c2m_np_w_full);
+      if (m2c_rd)        assert (!m2c_r_empty);
+    end
+  end
+
+  always @(posedge mem_clk) begin
+    if (mem_rst_n) begin
+      if (m2c_wr)        assert (!m2c_w_full);
+      if (c2m_posted_rd) assert (!c2m_posted_r_empty);
+      if (c2m_np_rd)     assert (!c2m_np_r_empty);
     end
   end
 `endif

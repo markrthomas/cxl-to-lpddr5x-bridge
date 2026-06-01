@@ -14,6 +14,7 @@ module async_fifo #(
   input  wire             w_en,
   input  wire [WIDTH-1:0] w_data,
   output wire             w_full,
+  output wire [ADDR_W:0]  w_occupancy, // write-domain occupancy estimate
 
   // Read side (r_clk domain)
   input  wire             r_clk,
@@ -62,7 +63,16 @@ module async_fifo #(
   /* verilator lint_on SYNCASYNCNET */
   wire [ADDR_W:0] r_ptr_gray_sync = r_sync1_w;
 
-  assign w_full = ((w_ptr_gray ^ r_ptr_gray_sync) == FULL_MASK);
+  // Binary synchronized read pointer for occupancy calculation
+  reg [ADDR_W:0] r_ptr_bin_sync;
+  always @(*) begin
+    r_ptr_bin_sync[ADDR_W] = r_ptr_gray_sync[ADDR_W];
+    for (integer i = ADDR_W-1; i >= 0; i = i - 1)
+      r_ptr_bin_sync[i] = r_ptr_bin_sync[i+1] ^ r_ptr_gray_sync[i];
+  end
+
+  assign w_full      = ((w_ptr_gray ^ r_ptr_gray_sync) == FULL_MASK);
+  assign w_occupancy = w_ptr_bin - r_ptr_bin_sync;
 
   always @(posedge w_clk or negedge w_rst_n) begin
     if (!w_rst_n) begin
@@ -105,5 +115,20 @@ module async_fifo #(
   end
 
   assign r_data = mem[r_ptr_bin[ADDR_W-1:0]];
+
+  // ---- Invariant Assertions ----
+`ifdef FORMAL
+  always @(posedge w_clk) begin
+    if (w_rst_n && w_en) begin
+      assert (!w_full);
+    end
+  end
+
+  always @(posedge r_clk) begin
+    if (r_rst_n && r_en) begin
+      assert (!r_empty);
+    end
+  end
+`endif
 
 endmodule

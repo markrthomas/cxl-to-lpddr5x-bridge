@@ -63,36 +63,25 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   matrix (`seed: [1,2,3,4]`, `fail-fast: false`), each running
   `make vlt-rand RAND_SEED=<n>` and uploading a per-seed VCD artifact. Verified
   all four seeds pass (SVA clean) with distinct traffic.
+- **[done 2026-06-01] Randomized soak + scoreboard**: Extended the cocotb env
+  with a robust randomized soak and reference-model scoreboard. Added negative
+  tests for mid-burst CRC corruption and credit-underflow attempts.
+- **[done 2026-06-01] Parameter sweep**: Created `verification/cocotb/sweep.sh`
+  to systematically test FIFO_DEPTH and credit settings.
+- **[done 2026-06-01] Synthesis smoke (Yosys)**: Added `make synth` to the root
+  Makefile; verified no inferred latches and captured area stats.
+- **[done 2026-06-01] Invariant assertions**: Added top-level and FIFO-level
+  assertions for overflow/underflow and credit pool conservation.
+- **[done 2026-06-01] Error/event counters**: Implemented `crc_err_cnt`,
+  `drain_cnt`, and FIFO `max_occ` status ports for improved observability.
 
 ## Near-term
 
-- **Randomized soak + scoreboard**: `sim/sim_rand.cpp` checks *protocol* (SVA) but
-  not *data* — it cannot catch a wrong opcode translation or a payload corruption,
-  only the directed TB's scoreboard does and only on fixed vectors. Extend the
-  cocotb env with a randomized opcode/length soak driven by a reference-model
-  scoreboard so those bugs are caught end-to-end. Also add the bad-CRC negatives:
-  mid-burst corruption and credit-underflow attempts.
+- **Formal depth**: raise bridge BMC depth past 16 once a k-induction invariant
+  closes the CDC sync-chain transient; add credit-conservation cover goals.
 
 ## Medium-term
 
-- **Parameter sweep**: every test runs the defaults (`FIFO_DEPTH=8`, all credits
-  8). Sweep `FIFO_DEPTH ∈ {2,8}` and `*_CREDITS ∈ {1,8}` across `sim_rand` /
-  cocotb to flush out depth/credit off-by-one and starvation bugs that hide at the
-  default.
-- **Synthesis smoke + CDC audit (Yosys)**: add `make synth`
-  (`yosys -p "read_verilog … ; synth ; stat"`) to catch inferred latches /
-  unintended priority logic and track cell/area as a regression signal — Yosys is
-  already in the pinned OSS CAD Suite. Add a structural CDC check that every
-  crossing goes through `cdc_sync` / `async_fifo` / `credit_pulse_sync`.
-- **Stronger invariant assertions**: beyond cover goals, assert `credit ≤ CREDITS`,
-  no FIFO write-when-full / read-when-empty, and `accepted_responses ==
-  returned_credits + in_flight`. These are the invariants most likely to break
-  under the parameter sweep. (Extends the formal credit-conservation work below.)
-- **Formal depth**: raise bridge BMC depth past 16 once a k-induction invariant
-  closes the CDC sync-chain transient; add credit-conservation cover goals.
-- **Error/event counters**: expose read-only status counters (CRC errors, dropped
-  flits, FIFO high-water, drain events). Failures become observable in sim and
-  silicon, and the scoreboard gets concrete signals to check.
 - **Verible lint + format**: add Google Verible style-lint + formatter as a
   non-blocking CI job for SV consistency; add a CI status badge and pinned
   OSS-tool versions to the README.

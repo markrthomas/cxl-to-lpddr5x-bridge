@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb uvm clean
+.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth ci cocotb uvm clean
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
@@ -36,9 +36,10 @@ help:
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage -> sim/coverage.info (fails below COV_MIN=$(COV_MIN)% lines)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
+	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
+	@echo "  make synth     — Yosys synthesis smoke (catch latches, area stats)"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
-	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
 	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
@@ -198,12 +199,26 @@ vlt-rand-gtkwave: vlt-rand
 formal:
 	$(MAKE) -C verification/formal
 
+# synth: Yosys synthesis smoke test. Checks for inferred latches / priority logic
+# and tracks area/cell count as a regression signal. Requires yosys on PATH.
+synth:
+	@set -e; \
+	command -v yosys >/dev/null 2>&1 || { echo "[SYNTH] yosys not on PATH; skipping"; exit 0; }; \
+	echo "[SYNTH] starting Yosys smoke synthesis..."; \
+	mkdir -p sim; \
+	yosys -p "read_verilog -Isrc $(BRIDGE_SRCS); synth -top cxl_lpddr5x_bridge; stat" > sim/synth.log 2>&1; \
+	grep -E "(wires|cells|memories|processes)$$" sim/synth.log; \
+	if grep -i "Latch inferred" sim/synth.log | grep -v "No latch inferred" > /dev/null; then \
+		echo "[SYNTH] FAIL: inferred latches detected!"; exit 1; \
+	fi; \
+	echo "[SYNTH] PASS: no latches, stat written to sim/synth.log"
+
 # Comprehensive local run.
-ci: regress coverage sva formal cocotb
-	@echo "[CI] regress + coverage + sva + formal + cocotb PASSED"
+ci: regress coverage sva formal cocotb synth
+	@echo "[CI] regress + coverage + sva + formal + cocotb + synth PASSED"
 
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
 	-$(MAKE) -C verification/uvm clean
-	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) sim/coverage.info
+	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) sim/coverage.info sim/synth.log

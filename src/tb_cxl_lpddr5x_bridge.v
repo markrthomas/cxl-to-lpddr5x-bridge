@@ -79,7 +79,11 @@ module tb_cxl_lpddr5x_bridge;
     .cxl_out_ready(cxl_out_ready),
     .link_up(link_up),
     .err_inj_en(err_inj_en),
-    .drain_done(drain_done)
+    .drain_done(drain_done),
+    .crc_err_cnt(),
+    .drain_cnt(),
+    .max_occ_c2m(),
+    .max_occ_m2c()
   );
 
   cxl_lpddr5x_bridge_chk #(.WIDTH(W)) u_chk (
