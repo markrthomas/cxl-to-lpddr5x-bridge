@@ -186,7 +186,10 @@ reachability cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
 `sim/sim_main.cpp` (Verilator `--coverage`): an asynchronous dual-clock C++ driver
 that walks every opcode, fills and drains both flow-control FIFOs, exercises the
 CRC-mismatch INVALID path, the error-injection window, and a link-down drain.
-`make coverage` emits `sim/coverage.info` at **96.9%** line coverage (>= 80% floor).
+`make coverage` emits `sim/coverage.info` at **96.9%** line coverage and **fails
+if line coverage drops below the `COV_MIN` floor (default 80%)** — it parses the
+`DA:` records directly (no `lcov` dependency) and prints the measured percentage.
+The CI `coverage` job runs `make coverage`, so the floor is enforced in CI.
 
 ## 8.5 Interface assertions (SVA)
 
@@ -262,7 +265,7 @@ jobs that each `needs: regress`:
 | Job | Runs | Tools |
 |:---|:---|:---|
 | `regress` | `make regress && make stress` | iverilog, verilator |
-| `coverage` | `make coverage` (uploads `coverage.info`) | verilator |
+| `coverage` | `make coverage` (enforces the 80% line floor; uploads `coverage.info`) | verilator |
 | `sva` | `make sva` | verilator |
 | `random` | `make vlt-rand` (uploads the VCD, `if: always()`) | verilator |
 | `cocotb` | `make cocotb` | iverilog, cocotb |

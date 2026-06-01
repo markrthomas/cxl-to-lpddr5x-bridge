@@ -49,13 +49,14 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   `cxl_lpddr5x_bridge.sby` keeps explicit reads (task-subdir path base) but its
   bmc/cover duplication was collapsed and it points at `rtl.f` as canonical. All
   OSS flows (regress / coverage / sva / vlt-rand / cocotb / formal) re-verified.
+- **[done 2026-06-01] Coverage gate**: `make coverage` now parses the `DA:`
+  records in `sim/coverage.info` and fails if line coverage is below the
+  `COV_MIN` floor (default 80%); it prints the measured % and PASS/FAIL. Enforced
+  in CI automatically (the `coverage` job runs `make coverage`). Current: 96.9%.
+  (No `lcov` dependency — parsed directly.)
 
 ## Near-term
 
-- **Coverage gate in CI**: the `coverage` job emits `sim/coverage.info` but does
-  not enforce the 80% floor, so coverage can silently regress. Add an
-  `lcov --summary` threshold check that fails CI below the floor. Pairs with
-  coverage closure below.
 - **Coverage closure**: chase the residual ~3% (8 lines in the bridge top, 1 in
   `reset_drain`) — mostly defensive/unreachable default branches; add cover-driven
   stimulus or waive with comments.

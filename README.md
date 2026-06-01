@@ -98,7 +98,7 @@ make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vc
 make vlt-rand    # randomized waveform-debug run (Verilator --trace --assert); see below
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)
-make coverage    # Verilator --coverage -> sim/coverage.info (96.9% lines)
+make coverage    # Verilator --coverage -> sim/coverage.info (96.9%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
 make ci          # regress + coverage + sva + formal + cocotb
 ```
@@ -141,7 +141,7 @@ stress), then fans out to parallel jobs that each depend on it:
 | Job | Command | Notes |
 |:---|:---|:---|
 | `regress` | `make regress && make stress` | Verilator lint + Icarus directed/stress |
-| `coverage` | `make coverage` | uploads `coverage.info` |
+| `coverage` | `make coverage` | enforces 80% line floor; uploads `coverage.info` |
 | `sva` | `make sva` | interface SVA under Verilator `--assert` |
 | `random` | `make vlt-rand` | randomized run; uploads the VCD on failure |
 | `cocotb` | `make cocotb` | 12 cocotb tests |

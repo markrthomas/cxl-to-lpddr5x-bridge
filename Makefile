@@ -15,6 +15,8 @@ VERILATOR_CPP  := $(VERILATOR_INC)/verilated.cpp $(VERILATOR_INC)/verilated_cov.
 # the repo root, so the root-relative paths in rtl.f are used verbatim.
 BRIDGE_SRCS := $(shell grep -vE '^[[:space:]]*(#|$$)' rtl.f)
 COV_DIR := sim/obj_dir_cov
+# Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
+COV_MIN ?= 80
 
 .PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal ci cocotb uvm clean
 
@@ -32,7 +34,7 @@ help:
 	@echo "                   reproducible: make vlt-rand RAND_SEED=42 RAND_CYCLES=4000"
 	@echo "  make vlt-rand-gtkwave — make vlt-rand, then open its VCD in GTKWave"
 	@echo "  make regress   — lint + sim (fast CI gate)"
-	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
+	@echo "  make coverage  — Verilator C++ coverage -> sim/coverage.info (fails below COV_MIN=$(COV_MIN)% lines)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
@@ -103,6 +105,11 @@ coverage:
 	if command -v verilator_coverage >/dev/null 2>&1; then \
 		verilator_coverage --write-info sim/coverage.info $(COV_DIR)/coverage.dat; \
 		echo "[COVERAGE] sim/coverage.info written"; \
+		pct=$$(awk -F: '/^DA:/{split($$2,a,","); f++; if(a[2]+0>0) h++} END{printf "%.1f", (f? 100*h/f : 0)}' sim/coverage.info); \
+		echo "[COVERAGE] line coverage: $$pct% (floor $(COV_MIN)%)"; \
+		awk -v p="$$pct" -v m="$(COV_MIN)" 'BEGIN{exit !(p+0 >= m+0)}' || { \
+			echo "[COVERAGE] FAIL: line coverage $$pct% below the $(COV_MIN)% floor"; exit 1; }; \
+		echo "[COVERAGE] PASS: meets the $(COV_MIN)% floor"; \
 	else \
 		echo "[COVERAGE] coverage.dat in $(COV_DIR) (install verilator for lcov export)"; \
 	fi
