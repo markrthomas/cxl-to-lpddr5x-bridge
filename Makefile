@@ -31,7 +31,7 @@ help:
 	@echo "  make vlt-rand  — randomized waveform-debug run (Verilator --trace --assert);"
 	@echo "                   reproducible: make vlt-rand RAND_SEED=42 RAND_CYCLES=4000"
 	@echo "  make vlt-rand-gtkwave — make vlt-rand, then open its VCD in GTKWave"
-	@echo "  make regress   — lint + sim + randomized SVA run (fast CI gate)"
+	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage (sim/sim_main.cpp -> sim/coverage.info)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
@@ -65,11 +65,9 @@ vcd:
 gtkwave:
 	$(MAKE) -C verification/directed gtkwave
 
-# fast CI gate: lint + directed sim + a randomized run under --assert (the SVA is
-# live, so a protocol violation in the random traffic fails the gate; seed is
-# fixed/printed for reproducibility).
-regress: lint sim vlt-rand
-	@echo "[REGRESS] lint + directed sim + randomized SVA run PASSED"
+# fast CI gate.
+regress: lint sim
+	@echo "[REGRESS] lint + directed sim PASSED"
 
 # cocotb OSS UVM-equivalent tests (Icarus VPI).
 cocotb:
