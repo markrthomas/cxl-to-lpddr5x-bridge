@@ -143,7 +143,7 @@ stress), then fans out to parallel jobs that each depend on it:
 | `regress` | `make regress && make stress` | Verilator lint + Icarus directed/stress |
 | `coverage` | `make coverage` | enforces 80% line floor; uploads `coverage.info` |
 | `sva` | `make sva` | interface SVA under Verilator `--assert` |
-| `random` | `make vlt-rand` | randomized run; uploads the VCD on failure |
+| `random` | `make vlt-rand RAND_SEED=<n>` | seed matrix `[1..4]`; per-seed VCD artifact |
 | `cocotb` | `make cocotb` | 12 cocotb tests |
 | `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite) |
 

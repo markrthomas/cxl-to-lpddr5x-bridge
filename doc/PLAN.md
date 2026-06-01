@@ -54,6 +54,10 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   `COV_MIN` floor (default 80%); it prints the measured % and PASS/FAIL. Enforced
   in CI automatically (the `coverage` job runs `make coverage`). Current: 96.9%.
   (No `lcov` dependency — parsed directly.)
+- **[done 2026-06-01] Random seed breadth**: the CI `random` job is now a seed
+  matrix (`seed: [1,2,3,4]`, `fail-fast: false`), each running
+  `make vlt-rand RAND_SEED=<n>` and uploading a per-seed VCD artifact. Verified
+  all four seeds pass (SVA clean) with distinct traffic.
 
 ## Near-term
 

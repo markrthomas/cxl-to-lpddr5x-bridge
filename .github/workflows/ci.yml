@@ -64,6 +64,10 @@ jobs:
   random:
     needs: regress
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false                   # one bad seed shouldn't cancel the others
+      matrix:
+        seed: [1, 2, 3, 4]               # breadth across distinct random streams
     steps:
       - uses: actions/checkout@v5
 
@@ -72,14 +76,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y verilator
 
-      - name: Randomized run (Verilator --trace --assert; SVA live on random traffic)
-        run: make vlt-rand
+      - name: Randomized run, seed ${{ matrix.seed }} (Verilator --trace --assert; SVA live)
+        run: make vlt-rand RAND_SEED=${{ matrix.seed }}
 
       - name: Upload waveform artifact
         if: always()                     # keep the VCD even when the SVA aborts the run
         uses: actions/upload-artifact@v4
         with:
-          name: random-waves
+          name: random-waves-seed${{ matrix.seed }}
           path: sim/obj_dir_rand/waves.vcd
           if-no-files-found: ignore
 

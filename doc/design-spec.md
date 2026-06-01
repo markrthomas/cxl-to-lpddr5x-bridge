@@ -267,7 +267,7 @@ jobs that each `needs: regress`:
 | `regress` | `make regress && make stress` | iverilog, verilator |
 | `coverage` | `make coverage` (enforces the 80% line floor; uploads `coverage.info`) | verilator |
 | `sva` | `make sva` | verilator |
-| `random` | `make vlt-rand` (uploads the VCD, `if: always()`) | verilator |
+| `random` | `make vlt-rand RAND_SEED=<n>` over a seed matrix `[1..4]` (per-seed VCD artifact, `if: always()`) | verilator |
 | `cocotb` | `make cocotb` | iverilog, cocotb |
 | `formal` | `make formal` | OSS CAD Suite (pinned) |
 
