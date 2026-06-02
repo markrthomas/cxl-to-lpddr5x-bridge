@@ -9,6 +9,9 @@ class cxl_lpddr5x_cfg extends uvm_object;
   // Sink backpressure, percent of cycles ready is deasserted [0..100].
   int unsigned cxl_out_bp_pct = 25;
   int unsigned lp_out_bp_pct  = 25;
+  // Maximum consecutive stall cycles.
+  int unsigned cxl_out_max_stall = 10;
+  int unsigned lp_out_max_stall  = 10;
   // Stimulus volume for the random sequences.
   int unsigned num_reqs = 300;
   int unsigned num_rsps = 300;

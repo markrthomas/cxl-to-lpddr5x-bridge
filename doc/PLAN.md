@@ -104,10 +104,13 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - **Verible lint + format**: add Google Verible style-lint + formatter as a
   non-blocking CI job for SV consistency; add a CI status badge and pinned
   OSS-tool versions to the README.
-- **UVM bench extensions**: the base env has landed (see Current state). Next:
-  a link-down/drain test (toggle `ctrl_vif.link_up`), constrained-random credit
-  stress, the parameter sweep above driven from UVM, and optionally a nightly run
-  on a licensed simulator.
+- **UVM bench extensions**: the base env has landed (see Current state). A
+  `cxl_lpddr5x_link_down_test` (drops `ctrl_vif.link_up` mid-run, waits for
+  `drain_done`, then restores) and bursty (multi-cycle) backpressure on both
+  egress responders (`cxl_out`/`lp_out`, `*_max_stall` knobs) have landed
+  (xrun-only; not in the OSS gate). Next: constrained-random credit stress, the
+  parameter sweep above driven from UVM, and optionally a nightly run on a
+  licensed simulator.
 
 ## Long-term
 

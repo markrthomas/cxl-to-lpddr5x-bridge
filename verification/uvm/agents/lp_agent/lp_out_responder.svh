@@ -24,10 +24,21 @@ class lp_out_responder extends uvm_component;
   endfunction
 
   task run_phase(uvm_phase phase);
+    int unsigned stall_cnt = 0;
     vif.drv_cb.lp_out_ready <= 1'b1;
     forever begin
       @(vif.drv_cb);
-      vif.drv_cb.lp_out_ready <= (($urandom_range(99) >= cfg.lp_out_bp_pct) ? 1'b1 : 1'b0);
+      if (stall_cnt > 0) begin
+        vif.drv_cb.lp_out_ready <= 1'b0;
+        stall_cnt--;
+      end else begin
+        if ($urandom_range(99) < cfg.lp_out_bp_pct) begin
+          vif.drv_cb.lp_out_ready <= 1'b0;
+          stall_cnt = $urandom_range(cfg.lp_out_max_stall, 1);
+        end else begin
+          vif.drv_cb.lp_out_ready <= 1'b1;
+        end
+      end
     end
   endtask
 endclass

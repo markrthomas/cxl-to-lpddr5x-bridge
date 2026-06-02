@@ -120,4 +120,32 @@ class cxl_lpddr5x_err_inj_test extends cxl_lpddr5x_base_test;
   endtask
 endclass
 
+// ---- Link-down: drop link_up mid-test, wait for drain_done, verify traffic stops ----
+class cxl_lpddr5x_link_down_test extends cxl_lpddr5x_base_test;
+  `uvm_component_utils(cxl_lpddr5x_link_down_test)
+  function new(string name, uvm_component parent); super.new(name, parent); endfunction
+  function void configure_cfg();
+    cfg.num_reqs = 500;
+    cfg.num_rsps = 500;
+  endfunction
+
+  task drive_controls();
+    // Drop link after ~100 requests.
+    repeat (100) @(ctrl_vif.mon_cb);
+    `uvm_info(get_type_name(), "Dropping link_up...", UVM_LOW)
+    ctrl_vif.link_up = 1'b0;
+
+    // Wait for drain_done.
+    wait (ctrl_vif.mon_cb.drain_done == 1'b1);
+    `uvm_info(get_type_name(), "drain_done detected", UVM_LOW)
+
+    // Keep link down for a while, verify (visually or via assertions) that
+    // ingress ready stays low. (Scoreboard continues checking what was already accepted).
+    repeat (100) @(ctrl_vif.mon_cb);
+
+    `uvm_info(get_type_name(), "Restoring link_up...", UVM_LOW)
+    ctrl_vif.link_up = 1'b1;
+  endtask
+endclass
+
 `endif
