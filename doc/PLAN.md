@@ -9,7 +9,11 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 - **RTL** (`src/`): `cxl_lpddr5x_bridge` top + `async_fifo`, `cdc_sync`,
   `reset_sync`, `reset_drain`, `credit_counter`, `credit_pulse_sync`, and a
-  bound checker `cxl_lpddr5x_bridge_chk`.
+  bound checker `cxl_lpddr5x_bridge_chk`. Per-class flow control is **occupancy
+  based** — credit availability is `FIFO occupancy < credit limit`, read straight
+  off the async FIFO's Gray-coded pointer sync (CDC-lossless, no return-pulse
+  path). `credit_pulse_sync` now carries only the sparse CRC-error event;
+  `credit_counter` is retained as a standalone formally-verified module.
 - **Directed** (`verification/directed/`): Icarus self-checking TB — link-up
   gating, granular opcodes, error injection, clock ratios (1:1, 2:1, 1:3), and a
   backpressure stress phase. `make sim` / `make stress`.
@@ -17,7 +21,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   rd/wr/masked/autopre, MRR/MRW, m2c rsp paths, bad-CRC reject). All PASS.
 - **Formal** (`verification/formal/`): SymbiYosys BMC + cover on `credit_counter`,
   `reset_drain`, and the `cxl_lpddr5x_bridge` top. 6/6 tasks PASS. Includes
-  valid/ready protocol on all four interfaces (egress asserted, ingress assumed).
+  valid/ready protocol on all four interfaces (egress asserted, ingress assumed),
+  plus credit-conservation invariants (occupancy never exceeds the credit pool)
+  and credit-availability cover goals.
 - **Interface SVA** (`verification/cxl_lpddr5x_bridge_sva.sv`): concurrent SVA on
   all four valid/ready ports (valid-stable, data-stable, handshake/stall cover),
   bound to the DUT and run under Verilator `--assert` via `make sva`.
@@ -74,11 +80,24 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   assertions for overflow/underflow and credit pool conservation.
 - **[done 2026-06-01] Error/event counters**: Implemented `crc_err_cnt`,
   `drain_cnt`, and FIFO `max_occ` status ports for improved observability.
+- **[done 2026-06-01] Credit-return CDC deadlock fix**: the randomized soak
+  surfaced an m2c liveness bug — the toggle-based `credit_pulse_sync` return path
+  drops pulses spaced below ~2 destination clocks, so sustained back-to-back
+  response draining (fast `clk` -> slow `mem_clk`) leaked response credits and
+  eventually starved the path. Reworked all three classes to **occupancy-based
+  credits** (availability = `FIFO occupancy < credit limit`), which is CDC-lossless
+  by construction. Removed the per-class `credit_counter` + `credit_pulse_sync`
+  instances from the datapath; added formal credit-conservation invariants and
+  cover goals. `test_random_soak` now drains back-to-back with no pacing and
+  passes; full OSS suite (regress / stress / coverage 100% / sva / vlt-rand /
+  cocotb 16/16 / formal 6/6) re-verified green. Also fixed the `max_occ` width
+  (8-bit) lint error that broke the `a2dd31b` CI run.
 
 ## Near-term
 
 - **Formal depth**: raise bridge BMC depth past 16 once a k-induction invariant
-  closes the CDC sync-chain transient; add credit-conservation cover goals.
+  closes the CDC sync-chain transient (credit-conservation invariants + cover
+  goals already landed; the remaining work is the unbounded `prove` task).
 
 ## Medium-term
 

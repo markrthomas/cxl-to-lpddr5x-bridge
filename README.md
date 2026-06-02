@@ -44,7 +44,7 @@ graph LR
 
 - **Dual-Clock Domain**: Independent `clk` (CXL host) and `mem_clk` (LPDDR5X command channel); all crossings via Gray-coded async FIFOs and toggle synchronizers.
 - **Protocol Translation**: CXL.mem `MEM_RD / MEM_WR / MEM_MRR / MEM_MRW` requests map to LPDDR5X `RD/RDA/WR/WRA/MWR/MRW/MRR` command flits; responses map back to CXL completions.
-- **Credit Flow Control**: Hardware-enforced credits per traffic class — Posted, Non-Posted, Response — returned across domains by toggle-based pulse synchronizers.
+- **Credit Flow Control**: Hardware-enforced credits per traffic class — Posted, Non-Posted, Response — derived from async-FIFO write-domain occupancy, so credit return across clock domains is inherently CDC-lossless (no toggle-pulse return path to drop).
 - **Ordering Preservation**: Posted-priority arbitration with command lock so a selected command drains before re-arbitration.
 - **Integrity Checking**: CRC-8/CCITT on the command channel; a response with a bad checksum (or unknown kind) becomes a CXL **INVALID** completion.
 - **Link State Management**: A reset-drain FSM (`DOWN → UP → DRAIN → DOWN`) gates the bridge open only while the link is up and drains cleanly on link-down.
@@ -77,11 +77,11 @@ The top-level packet model is a fixed 64-bit simulation format shared in both di
 |:---|:---|
 | `src/cxl_lpddr5x_bridge.v` | Top-level translation, arbitration, credit, and link-gating integration. |
 | `src/cxl_lpddr5x_bridge_defs.vh` | Packet constants, pack helpers, and CRC-8 checksum function. |
-| `src/async_fifo.v` | Dual-clock first-word-fall-through FIFO with Gray-coded pointer CDC. |
+| `src/async_fifo.v` | Dual-clock first-word-fall-through FIFO with Gray-coded pointer CDC; exposes write-domain occupancy used for credit gating. |
 | `src/cdc_sync.v` | Multi-flop level synchronizer for single-bit control crossings. |
 | `src/reset_sync.v` | Asynchronous-assert / synchronous-deassert reset synchronizer. |
-| `src/credit_counter.v` | Saturating per-class credit availability counter. |
-| `src/credit_pulse_sync.v` | Toggle-based pulse crossing for credit returns. |
+| `src/credit_counter.v` | Saturating credit availability counter (standalone, formally verified; not in the occupancy-based datapath). |
+| `src/credit_pulse_sync.v` | Toggle-based single-event pulse crossing (used for the CRC-error counter). |
 | `src/reset_drain.v` | `DOWN / UP / DRAIN` link-state gate. |
 | `src/cxl_lpddr5x_bridge_chk.v` | Simulation checker wrapper used by directed tests. |
 
@@ -160,7 +160,7 @@ Build a PDF of the spec with `make -C doc` (requires `pandoc` + a LaTeX engine).
 ## Status
 
 The RTL implements granular protocol opcodes, posted-priority egress arbitration,
-fully integrated cross-domain credit counters, and a reset-drain link gate. It is
+occupancy-based cross-domain credit flow control, and a reset-drain link gate. It is
 verified for structural integrity and logical correctness across varied clock
 ratios (1:1, 2:1, 1:3) and traffic patterns.
 

@@ -206,7 +206,7 @@ synth:
 	command -v yosys >/dev/null 2>&1 || { echo "[SYNTH] yosys not on PATH; skipping"; exit 0; }; \
 	echo "[SYNTH] starting Yosys smoke synthesis..."; \
 	mkdir -p sim; \
-	yosys -p "read_verilog -Isrc $(BRIDGE_SRCS); synth -top cxl_lpddr5x_bridge; stat" > sim/synth.log 2>&1; \
+	yosys -p "read_verilog -sv -Isrc $(BRIDGE_SRCS); synth -top cxl_lpddr5x_bridge; stat" > sim/synth.log 2>&1; \
 	grep -E "(wires|cells|memories|processes)$$" sim/synth.log; \
 	if grep -i "Latch inferred" sim/synth.log | grep -v "No latch inferred" > /dev/null; then \
 		echo "[SYNTH] FAIL: inferred latches detected!"; exit 1; \

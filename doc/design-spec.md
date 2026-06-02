@@ -73,12 +73,25 @@ completion:
 
 ### 4.2.2 Flow control (credits)
 
-Each ingress class has a saturating `credit_counter`: a request consumes one credit
-when accepted (`cxl_in_ready` / `lp_in_ready` only assert while credits remain and
-the FIFO is not full). When a command/completion is later popped on the far domain,
-a one-cycle pulse is carried back through a `credit_pulse_sync` (toggle handshake)
-and returns the credit. Posted and Non-Posted credits return from `mem_clk`->`clk`;
-Response credits return from `clk`->`mem_clk`.
+Credit availability is derived directly from each class's async-FIFO **write-domain
+occupancy**: an ingress class accepts a request only while its FIFO occupancy is
+below the credit limit and the FIFO is not full
+(`posted_crd_avail = c2m_p_occ < POSTED_CREDITS`, and likewise for `NP_CREDITS` /
+`RSP_CREDITS`). Because occupancy is computed from the FIFO's Gray-coded,
+glitch-free pointer synchronization, the writer always sees a *conservative
+(lagging)* view of how much the reader has drained, so credits are returned
+**losslessly** as the far domain pops entries — there is no separate return path to
+under- or over-count.
+
+> **History.** An earlier design returned credits with a saturating `credit_counter`
+> plus a toggle-handshake `credit_pulse_sync` per class. That handshake can only
+> carry return pulses spaced more than ~2 destination clocks apart; under sustained
+> back-to-back response draining (the fast `clk`->slow `mem_clk` direction) it leaked
+> return pulses and eventually starved the m2c path — a liveness bug the randomized
+> cocotb soak (`test_random_soak`) surfaced. Moving to occupancy-derived credits
+> removes the lossy return path entirely. `credit_pulse_sync` is retained only for
+> the single-event CRC-error counter crossing (where pulses are naturally sparse);
+> `credit_counter` is kept as a standalone, formally-verified module.
 
 ### 4.2.3 Asynchronous buffering
 

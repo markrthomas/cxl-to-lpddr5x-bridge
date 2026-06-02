@@ -296,15 +296,36 @@ module cxl_lpddr5x_bridge #(
 
   wire cxl_in_is_posted_w = is_posted(cxl_in_data);
 
+  // --- Credit-based flow control (FIFO-occupancy derived) ---
+  // Occupancy comes from each async-FIFO's gray-coded, glitch-free pointer
+  // sync, so credit availability is inherently CDC-lossless: there are no
+  // return pulses to drop. (The previous credit_pulse_sync scheme could leak
+  // toggle pulses spaced below the destination-clock bandwidth and eventually
+  // starve a path -- the m2c deadlock the randomized soak surfaced.)
+  localparam integer OCC_W = $clog2(FIFO_DEPTH) + 1;
+
+  wire [OCC_W-1:0] c2m_p_occ;    // u_c2m_posted write-domain occupancy (clk)
+  wire [OCC_W-1:0] c2m_np_occ;   // u_c2m_np     write-domain occupancy (clk)
+  wire [OCC_W-1:0] m2c_occ_mem;  // u_m2c        write-domain occupancy (mem_clk)
+
+  // Compare occupancy against the credit threshold in a fixed 16-bit width that
+  // holds both operands -- credits may exceed FIFO_DEPTH, so we must not
+  // truncate to the (narrower) occupancy width. Portable across Verilator,
+  // Icarus and Yosys (no SystemVerilog size-casts).
+  localparam [15:0] POSTED_LIM = POSTED_CREDITS[15:0];
+  localparam [15:0] NP_LIM     = NP_CREDITS[15:0];
+  localparam [15:0] RSP_LIM    = RSP_CREDITS[15:0];
+
+  wire posted_crd_avail = ({{(16-OCC_W){1'b0}}, c2m_p_occ}   < POSTED_LIM);
+  wire np_crd_avail     = ({{(16-OCC_W){1'b0}}, c2m_np_occ}  < NP_LIM);
+  wire rsp_crd_avail    = ({{(16-OCC_W){1'b0}}, m2c_occ_mem} < RSP_LIM);
+
   // --- CXL domain ingress gating (clk) ---
-  wire posted_crd_avail;
-  wire np_crd_avail;
   assign cxl_in_ready  = bridge_open && (cxl_in_is_posted_w ?
                          (!c2m_posted_w_full && posted_crd_avail) :
                          (!c2m_np_w_full     && np_crd_avail));
 
   // --- LPDDR5X domain ingress gating (mem_clk) ---
-  wire rsp_crd_avail;
   assign lp_in_ready = bridge_open_mem && (!m2c_w_full && rsp_crd_avail);
 
   // --- CXL domain egress (clk) ---
@@ -346,41 +367,8 @@ module cxl_lpddr5x_bridge #(
   wire m2c_wr        = lp_in_valid && lp_in_ready;
   wire m2c_rd        = cxl_out_ready && cxl_out_valid;
 
-  // --- Credit counters and pulse syncs ---
-
-  wire posted_ret_clk;
-  credit_pulse_sync u_posted_ret_sync (
-    .src_clk(mem_clk), .src_rst_n(mem_rst_n), .src_pulse(c2m_posted_rd),
-    .dst_clk(clk),     .dst_rst_n(clk_rst_n), .dst_pulse(posted_ret_clk)
-  );
-  credit_counter #(.CREDITS(POSTED_CREDITS)) u_posted_crd (
-    .clk(clk), .rst_n(clk_rst_n), .consume(c2m_posted_wr), .ret(posted_ret_clk),
-    .available(posted_crd_avail)
-  );
-
-  wire np_ret_clk;
-  credit_pulse_sync u_np_ret_sync (
-    .src_clk(mem_clk), .src_rst_n(mem_rst_n), .src_pulse(c2m_np_rd),
-    .dst_clk(clk),     .dst_rst_n(clk_rst_n), .dst_pulse(np_ret_clk)
-  );
-  credit_counter #(.CREDITS(NP_CREDITS)) u_np_crd (
-    .clk(clk), .rst_n(clk_rst_n), .consume(c2m_np_wr), .ret(np_ret_clk),
-    .available(np_crd_avail)
-  );
-
-  wire rsp_ret_mem;
-  credit_pulse_sync u_rsp_ret_sync (
-    .src_clk(clk),     .src_rst_n(clk_rst_n), .src_pulse(m2c_rd),
-    .dst_clk(mem_clk), .dst_rst_n(mem_rst_n), .dst_pulse(rsp_ret_mem)
-  );
-  credit_counter #(.CREDITS(RSP_CREDITS)) u_rsp_crd (
-    .clk(mem_clk), .rst_n(mem_rst_n), .consume(m2c_wr), .ret(rsp_ret_mem),
-    .available(rsp_crd_avail)
-  );
-
   // --- Async FIFOs ---
 
-  wire [$clog2(FIFO_DEPTH):0] c2m_p_occ;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
@@ -392,7 +380,6 @@ module cxl_lpddr5x_bridge #(
     .r_en    (c2m_posted_rd), .r_data (c2m_posted_rd_data), .r_empty(c2m_posted_r_empty)
   );
 
-  wire [$clog2(FIFO_DEPTH):0] c2m_np_occ;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
@@ -404,7 +391,6 @@ module cxl_lpddr5x_bridge #(
     .r_en    (c2m_np_rd), .r_data (c2m_np_rd_data), .r_empty(c2m_np_r_empty)
   );
 
-  wire [$clog2(FIFO_DEPTH):0] m2c_occ_mem;
   async_fifo #(
     .WIDTH (WIDTH),
     .DEPTH (FIFO_DEPTH)
@@ -456,10 +442,13 @@ module cxl_lpddr5x_bridge #(
       if (link_up_clk_q && !link_up_clk && drain_cnt != 16'hFFFF)
         drain_cnt <= drain_cnt + 1'b1;
 
-      if ({3'b0, c2m_p_occ}  > max_occ_c2m) max_occ_c2m <= {3'b0, c2m_p_occ};
-      if ({3'b0, c2m_np_occ} > max_occ_c2m) max_occ_c2m <= {3'b0, c2m_np_occ};
+      // max_occ_* are 8-bit observability ports; zero-extend OCC_W-wide
+      // occupancy to 8 bits (DEPTH <= 128) -- no SystemVerilog size-casts so
+      // Icarus is happy too.
+      if ({{(8-OCC_W){1'b0}}, c2m_p_occ}  > max_occ_c2m) max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_p_occ};
+      if ({{(8-OCC_W){1'b0}}, c2m_np_occ} > max_occ_c2m) max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_np_occ};
 
-      if ({3'b0, m2c_occ_clk} > max_occ_m2c) max_occ_m2c <= {3'b0, m2c_occ_clk};
+      if ({{(8-OCC_W){1'b0}}, m2c_occ_clk} > max_occ_m2c) max_occ_m2c <= {{(8-OCC_W){1'b0}}, m2c_occ_clk};
     end
   end
 
@@ -661,6 +650,29 @@ module cxl_lpddr5x_bridge #(
       if (m2c_wr)        assert (!m2c_w_full);
       if (c2m_posted_rd) assert (!c2m_posted_r_empty);
       if (c2m_np_rd)     assert (!c2m_np_r_empty);
+    end
+  end
+
+  // ---- Credit Conservation Invariants ----
+  // In the occupancy-based scheme, FIFO occupancy IS the credit state: ingress
+  // is gated while occupancy >= credits, so occupancy can never exceed the
+  // credit pool. (Zero-extended to the 16-bit limit width, as in the gating.)
+  always @(*) begin
+    if (clk_rst_n) begin
+      assert ({{(16-OCC_W){1'b0}}, c2m_p_occ}  <= POSTED_LIM);
+      assert ({{(16-OCC_W){1'b0}}, c2m_np_occ} <= NP_LIM);
+    end
+    if (mem_rst_n) begin
+      assert ({{(16-OCC_W){1'b0}}, m2c_occ_mem} <= RSP_LIM);
+    end
+  end
+
+  // ---- Credit Conservation Cover Goals ----
+  always_ff @(posedge clk) begin
+    if (clk_rst_n) begin
+      cover (posted_crd_avail == 1'b0);
+      cover (np_crd_avail     == 1'b0);
+      cover (posted_crd_avail && $past(!posted_crd_avail));
     end
   end
 `endif

@@ -361,21 +361,17 @@ async def _lp_out_agent(dut, n_cmd, sb):
 
 
 async def _cxl_out_agent(dut, n_cpl, sb):
+    # Random backpressure with no mandatory cooldown: response credits are
+    # derived from m2c FIFO occupancy (gray-coded pointer sync), so the path is
+    # CDC-lossless and tolerates sustained back-to-back draining. This used to
+    # deadlock under the old toggle-pulse credit-return scheme; the soak now
+    # stresses exactly that case.
     seen = 0
     while seen < n_cpl:
         dut.cxl_out_ready.value = 1 if random.random() > 0.25 else 0
         await RisingEdge(dut.clk)
         if int(dut.cxl_out_valid.value) == 1 and int(dut.cxl_out_ready.value) == 1:
             sb.on_completion(int(dut.cxl_out_data.value)); seen += 1
-            # Pace the m2c credit-return pulses below the clk->mem_clk CDC
-            # bandwidth: the toggle-based credit_pulse_sync needs returns spaced
-            # apart (>2 mem_clk). Sustained back-to-back completion draining leaks
-            # response credits and eventually starves m2c — a known RTL limitation
-            # this soak surfaced (see doc/PLAN.md). A realistic consumer idles
-            # between completions, which this models.
-            dut.cxl_out_ready.value = 0
-            for _ in range(3):
-                await RisingEdge(dut.clk)
     dut.cxl_out_ready.value = 1
 
 

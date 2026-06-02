@@ -14,7 +14,9 @@ module async_fifo #(
   input  wire             w_en,
   input  wire [WIDTH-1:0] w_data,
   output wire             w_full,
-  output wire [ADDR_W:0]  w_occupancy, // write-domain occupancy estimate
+  // Width is $clog2(DEPTH)+1; ADDR_W (a localparam below) isn't visible in the
+  // ANSI port list under yosys, so spell out $clog2(DEPTH) here.
+  output wire [$clog2(DEPTH):0] w_occupancy, // write-domain occupancy estimate
 
   // Read side (r_clk domain)
   input  wire             r_clk,
