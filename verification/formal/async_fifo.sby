@@ -1,0 +1,22 @@
+[tasks]
+bmc
+cover
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 24
+cover: mode cover
+cover: depth 24
+prove: mode prove
+prove: depth 24
+multiclock on
+
+[engines]
+smtbmc
+
+[script]
+# Yosys cwd is <taskdir>/src; repo RTL is four levels up.
+# FIFO_FORMAL_STANDALONE adds the caller/reset contract (see async_fifo.v).
+read_verilog -sv -DFORMAL -DFIFO_FORMAL_STANDALONE ../../../../src/async_fifo.v
+prep -top async_fifo

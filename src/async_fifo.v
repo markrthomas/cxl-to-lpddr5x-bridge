@@ -120,6 +120,112 @@ module async_fifo #(
 
   // ---- Invariant Assertions ----
 `ifdef FORMAL
+  localparam [ADDR_W:0] DEPTH_VEC = DEPTH[ADDR_W:0];
+
+`ifdef FIFO_FORMAL_STANDALONE
+  // Standalone proof environment contract. The integrated bridge drives these
+  // exact conditions (writes gated by occupancy<credits<=DEPTH and !w_full,
+  // reads gated by !empty), and uses a single common reset for both domains —
+  // model that here so the unbounded `prove` reflects real usage rather than
+  // an unconstrained, unreachable environment.
+  initial assume (!w_rst_n);
+  always @(*) begin
+    assume (w_rst_n == r_rst_n);          // common async reset (see header)
+    if (w_full)  assume (!w_en);          // caller honours full backpressure
+    if (r_empty) assume (!r_en);          // caller honours empty backpressure
+  end
+`endif
+
+  // (1) Each gray pointer is the gray encoding of its binary counterpart.
+  //     1-inductive on its own; everything below leans on it.
+  always @(*) if (w_rst_n) assert (w_ptr_gray == (w_ptr_bin ^ (w_ptr_bin >> 1)));
+  always @(*) if (r_rst_n) assert (r_ptr_gray == (r_ptr_bin ^ (r_ptr_bin >> 1)));
+
+  // ---- Ghost counters for the occupancy / CDC sync-chain invariants ----
+  // The real pointers are ADDR_W+1 bits, so the modulus is exactly 2*DEPTH and
+  // a binary pointer difference is wrap-AMBIGUOUS at the FIFO-full boundary
+  // (gap == DEPTH == modulus/2): a legal full-drained state and an illegal
+  // "synchronizer ran ahead of its source" state are indistinguishable by any
+  // (ADDR_W+1)-bit difference, so plain pointer-difference invariants are not
+  // inductive. We add free-running GHOST counters (FORMAL-only) one bit wider
+  // than needed: every live pairwise gap is <= DEPTH, which now sits below the
+  // ghost half-modulus (2^(GW-1) > DEPTH), so differences are unambiguous and
+  // the ordering becomes k-inductive. The ghosts shadow the real pointers and
+  // each synchronizer stage exactly, and are tied back to the RTL by equality.
+  localparam integer    GW      = ADDR_W + 3;   // > 1 bit of headroom over DEPTH
+  localparam [GW-1:0]   DEPTH_G = DEPTH[GW-1:0];
+
+  reg [GW-1:0] f_wcnt, f_rcnt;       // unwrapped write / read pointers
+  reg [GW-1:0] f_rs0, f_rs1;         // read count through the w-domain synchronizer
+  reg [GW-1:0] f_ws0, f_ws1;         // write count through the r-domain synchronizer
+
+  // Ghosts advance/shift on exactly the same edges and conditions as the RTL.
+  always @(posedge w_clk or negedge w_rst_n) begin
+    if (!w_rst_n) begin
+      f_wcnt <= {GW{1'b0}};
+      f_rs0  <= {GW{1'b0}};
+      f_rs1  <= {GW{1'b0}};
+    end else begin
+      if (w_en && !w_full) f_wcnt <= f_wcnt + 1'b1;
+      f_rs0 <= f_rcnt;               // parallels r_sync0_w <= r_ptr_gray
+      f_rs1 <= f_rs0;                // parallels r_sync1_w <= r_sync0_w
+    end
+  end
+  always @(posedge r_clk or negedge r_rst_n) begin
+    if (!r_rst_n) begin
+      f_rcnt <= {GW{1'b0}};
+      f_ws0  <= {GW{1'b0}};
+      f_ws1  <= {GW{1'b0}};
+    end else begin
+      if (r_en && !r_empty) f_rcnt <= f_rcnt + 1'b1;
+      f_ws0 <= f_wcnt;
+      f_ws1 <= f_ws0;
+    end
+  end
+
+  // (2) Ties: the real pointers and the gray-coded synchronizer stages are the
+  //     low ADDR_W+1 bits of their ghost (gray-encoded for the sync stages).
+  //     Inductive because each ghost updates from the same source on the same
+  //     edge as its RTL counterpart, and gray==bin2gray(bin) holds by (1).
+  always @(*) if (w_rst_n) begin
+    assert (w_ptr_bin == f_wcnt[ADDR_W:0]);
+    assert (r_sync0_w == (f_rs0[ADDR_W:0] ^ (f_rs0[ADDR_W:0] >> 1)));
+    assert (r_sync1_w == (f_rs1[ADDR_W:0] ^ (f_rs1[ADDR_W:0] >> 1)));
+  end
+  always @(*) if (r_rst_n) begin
+    assert (r_ptr_bin == f_rcnt[ADDR_W:0]);
+    assert (w_sync0_r == (f_ws0[ADDR_W:0] ^ (f_ws0[ADDR_W:0] >> 1)));
+    assert (w_sync1_r == (f_ws1[ADDR_W:0] ^ (f_ws1[ADDR_W:0] >> 1)));
+  end
+
+  // (3) Pointer-ordering window on the ghosts (unambiguous, see above). The
+  //     write pointer leads the read pointer, which leads the two w-domain
+  //     synchronizer stages (older, monotone samples of R):
+  //         f_rs1 <= f_rs0 <= f_rcnt <= f_wcnt
+  //     and symmetrically the read side trails lagged copies of the write
+  //     pointer:
+  //         f_rcnt <= f_ws1 <= f_ws0 <= f_wcnt
+  //     The gating bounds f_wcnt-f_rs1 (write/full) and f_ws1-f_rcnt
+  //     (read/empty) are what make the occupancy bound inductive across the CDC
+  //     synchronizers.
+  always @(*) if (w_rst_n) begin
+    assert ((f_wcnt - f_rcnt) <= DEPTH_G);   // true occupancy <= DEPTH
+    assert ((f_wcnt - f_rs0)  <= DEPTH_G);
+    assert ((f_wcnt - f_rs1)  <= DEPTH_G);   // occupancy estimate (full gating)
+    assert ((f_rcnt - f_rs0)  <= DEPTH_G);
+    assert ((f_rs0  - f_rs1)  <= DEPTH_G);
+    assert ((f_wcnt - f_ws0)  <= DEPTH_G);
+    assert ((f_wcnt - f_ws1)  <= DEPTH_G);
+    assert ((f_ws0  - f_ws1)  <= DEPTH_G);
+    assert ((f_ws1  - f_rcnt) <= DEPTH_G);   // empty gating
+  end
+
+  // (4) Reported occupancy never exceeds DEPTH (the credit pool is sized <=
+  //     DEPTH, so this underpins the bridge credit-conservation invariant).
+  //     Follows from (2)+(3): w_occupancy == (f_wcnt - f_rs1)[ADDR_W:0].
+  always @(*) if (w_rst_n) assert (w_occupancy <= DEPTH_VEC);
+
+  // (5) The original liveness guards: the gating never writes-full / reads-empty.
   always @(posedge w_clk) begin
     if (w_rst_n && w_en) begin
       assert (!w_full);

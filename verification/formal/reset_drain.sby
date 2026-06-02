@@ -1,12 +1,15 @@
 [tasks]
 bmc
 cover
+prove
 
 [options]
 bmc: mode bmc
 bmc: depth 32
 cover: mode cover
 cover: depth 32
+prove: mode prove
+prove: depth 32
 
 [engines]
 smtbmc

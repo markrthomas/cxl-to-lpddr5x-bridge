@@ -43,12 +43,24 @@ module reset_drain (
 `ifdef FORMAL
   initial assume (!rst_n);
 
-  always_ff @(posedge clk) begin
+  // Safety invariants are checked COMBINATIONALLY (every step), not on posedge
+  // clk. Under `multiclock on` the solver may freeze clk for the whole
+  // induction window; a clocked assertion is then never evaluated, letting
+  // k-induction start in the unreachable encoding state==2'd3 (scrubbed only by
+  // the `default` arm on a clock edge that never arrives). An immediate assert
+  // holds in every step, so the induction hypothesis carries state!=2'd3
+  // forward and the FSM transition preserves it -> 1-inductive.
+  always @(*) begin
     if (rst_n) begin
       // legal 2-bit encoding (S_DOWN=0, S_UP=1, S_DRAIN=2; 3 is unused)
       assert (state != 2'd3);
       // drain_done tracks (S_DOWN || S_DRAIN) && all_empty
       assert (drain_done == ((state == S_DOWN || state == S_DRAIN) && all_empty));
+    end
+  end
+
+  always_ff @(posedge clk) begin
+    if (rst_n) begin
       // reachability
       cover (state == S_UP);
       cover (state == S_DRAIN);

@@ -189,10 +189,37 @@ bad-CRC INVALID rejection. All pass under Icarus VPI.
 
 ## 8.3 Formal verification
 
-`verification/formal/` (SymbiYosys): BMC + cover on `credit_counter`, `reset_drain`,
-and the `cxl_lpddr5x_bridge` top -- 6/6 tasks pass. Properties live in `` `ifdef FORMAL ``
-blocks (e.g. the reset-drain legal-encoding and `drain_done` tracking asserts, with
-reachability cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
+`verification/formal/` (SymbiYosys): 11/11 tasks pass. `credit_counter`,
+`reset_drain`, and the dual-clock `async_fifo` each close **unbounded `prove`**
+(basecase + temporal k-induction), not just BMC; the `cxl_lpddr5x_bridge` top runs
+BMC (depth 24) + cover. Properties live in `` `ifdef FORMAL `` blocks (e.g. the
+reset-drain legal-encoding and `drain_done` tracking asserts, with reachability
+cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
+
+Two techniques make the unbounded proofs go through:
+
+- **`async_fifo` ghost counters.** The real Gray pointers are `ADDR_W+1` bits, so
+  the modulus is exactly `2*DEPTH` and a binary pointer difference is
+  wrap-ambiguous at the FIFO-full boundary (`gap == DEPTH == modulus/2`): a legal
+  full-then-drained state is indistinguishable from an illegal "synchronizer ran
+  ahead of its source" state, so plain pointer-difference invariants are *not*
+  inductive. FORMAL-only free-running **ghost counters** -- one bit wider than the
+  real pointers -- shadow each pointer and each two-flop synchronizer stage, and
+  are tied back to the RTL by equality. Stated on the ghosts, every live pairwise
+  gap (`<= DEPTH`) sits below the ghost half-modulus, so the pointer ordering
+  (`f_rs1 <= f_rs0 <= r_cnt <= w_cnt`, symmetric on the read side) and the
+  occupancy bound (`occupancy <= DEPTH`) are unambiguous and k-inductive across
+  the CDC synchronizers. This is the credit-conservation guarantee proved *for all
+  time*; the bridge's per-class credit-conservation BMC composes with it under
+  assume-guarantee.
+- **Combinational safety asserts under `multiclock`.** `reset_drain`'s
+  legal-encoding (`state != 2'd3`) and `drain_done` asserts are written as
+  immediate (`always @(*)`) checks rather than `always_ff @(posedge clk)`. With
+  `multiclock on` the solver may freeze a clock for the entire induction window;
+  a clocked assertion is then never evaluated, letting induction start in the
+  unreachable `state==2'd3` (the FSM scrubs it only via the `default` arm on a
+  clock edge that never arrives). An immediate assert holds in every step, so the
+  hypothesis carries `state != 2'd3` forward and the transition preserves it.
 
 ## 8.4 Coverage
 
@@ -296,7 +323,7 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 
 - **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
 - **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
-- **Formal depth** -- raise bridge BMC depth past 16 via k-induction; add credit-conservation cover goals and FIFO over/underflow asserts.
+- **Formal depth** -- *done*: `credit_counter` / `reset_drain` / `async_fifo` close unbounded `prove`, the CDC occupancy bound is k-inductive (ghost counters, §8.3), and the bridge BMC depth is raised to 24. Remaining: the bridge *top* unbounded `prove`, blocked only on egress valid/ready data-stability (needs FIFO head-of-line data-path integrity that survives `multiclock` + async reset + `$past`).
 - **Synthesis smoke + CDC audit** -- a Yosys `synth; stat` pass plus a structural check that every crossing goes through a synchronizer.
 - **UVM extensions** -- the base env has landed (§8.7); add a link-down/drain test, credit stress, and the parameter sweep driven from UVM.
 - **Memory model** -- LPDDR5X bank/timing scheduler for end-to-end latency checks.

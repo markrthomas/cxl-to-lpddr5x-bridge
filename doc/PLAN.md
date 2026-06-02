@@ -19,11 +19,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   backpressure stress phase. `make sim` / `make stress`.
 - **cocotb** (`verification/cocotb/`): 12 OSS UVM-equivalent tests (c2m mem
   rd/wr/masked/autopre, MRR/MRW, m2c rsp paths, bad-CRC reject). All PASS.
-- **Formal** (`verification/formal/`): SymbiYosys BMC + cover on `credit_counter`,
-  `reset_drain`, and the `cxl_lpddr5x_bridge` top. 6/6 tasks PASS. Includes
-  valid/ready protocol on all four interfaces (egress asserted, ingress assumed),
-  plus credit-conservation invariants (occupancy never exceeds the credit pool)
-  and credit-availability cover goals.
+- **Formal** (`verification/formal/`): SymbiYosys, 11/11 tasks PASS.
+  `credit_counter`, `reset_drain`, and `async_fifo` each close **unbounded
+  `prove`** (basecase + k-induction), not just BMC; the `cxl_lpddr5x_bridge` top
+  runs BMC (depth 24) + cover. `async_fifo` carries the CDC sync-chain proof:
+  free-running ghost counters (one bit wider than the real pointers, so live
+  pointer gaps stay below the wrap-ambiguous half-modulus) make the
+  Gray-pointer ordering and the occupancy bound (`occupancy <= DEPTH`)
+  k-inductive across the two-flop synchronizers. The bridge proof includes
+  valid/ready protocol on all four interfaces (egress asserted, ingress
+  assumed), credit-conservation invariants (occupancy never exceeds the credit
+  pool — now composing with `async_fifo`'s unbounded occupancy proof) and
+  credit-availability cover goals.
 - **Interface SVA** (`verification/cxl_lpddr5x_bridge_sva.sv`): concurrent SVA on
   all four valid/ready ports (valid-stable, data-stable, handshake/stall cover),
   bound to the DUT and run under Verilator `--assert` via `make sva`.
@@ -92,12 +99,32 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   passes; full OSS suite (regress / stress / coverage 100% / sva / vlt-rand /
   cocotb 16/16 / formal 6/6) re-verified green. Also fixed the `max_occ` width
   (8-bit) lint error that broke the `a2dd31b` CI run.
+- **[done 2026-06-02] Formal depth / k-induction**: closed the CDC sync-chain
+  transient with unbounded `prove`. `async_fifo` now carries free-running ghost
+  counters (FORMAL-only, one bit wider than the real Gray pointers) that shadow
+  each pointer and synchronizer stage; stated on the ghosts — where live gaps
+  stay below the wrap-ambiguous half-modulus — the pointer ordering and the
+  occupancy bound (`occupancy <= DEPTH`) become k-inductive, so `async_fifo`,
+  `reset_drain`, and `credit_counter` all pass unbounded `prove`. `reset_drain`
+  also needed its legal-encoding/`drain_done` assertions moved to combinational
+  (immediate) form: under `multiclock on` the solver can freeze a clock for the
+  whole induction window, leaving a clocked assertion unevaluated and letting
+  induction start in the unreachable `state==2'd3`. The bridge BMC depth was
+  raised 16 -> 24 (cover stays 32). Formal task count 6 -> 11. Remaining (moved
+  to near-term below): full unbounded `prove` of the bridge *top* is blocked
+  only on egress valid/ready data-stability, which needs FIFO head-of-line
+  data-path integrity — awkward to make k-inductive under `multiclock` + async
+  reset + `$past`; the per-module unbounded proofs compose with the bridge BMC
+  under assume-guarantee in the meantime.
 
 ## Near-term
 
-- **Formal depth**: raise bridge BMC depth past 16 once a k-induction invariant
-  closes the CDC sync-chain transient (credit-conservation invariants + cover
-  goals already landed; the remaining work is the unbounded `prove` task).
+- **Bridge top unbounded prove**: close the one remaining non-inductive bridge
+  assertion — egress (`lp_out`/`cxl_out`) valid/ready data-stability — by adding
+  FIFO head-of-line data-path integrity invariants that survive `multiclock on`
+  (e.g. a monotonic-reset model plus a clock-robust head-stability formulation
+  that avoids the global-step `$past` artifact). Then convert the bridge `bmc`
+  task to `prove`.
 
 ## Medium-term
 

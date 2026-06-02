@@ -36,7 +36,7 @@ help:
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage -> sim/coverage.info (fails below COV_MIN=$(COV_MIN)% lines)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
-	@echo "  make formal    — SymbiYosys BMC + cover (credit_counter, reset_drain, bridge)"
+	@echo "  make formal    — SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo; bridge BMC depth 24)"
 	@echo "  make synth     — Yosys synthesis smoke (catch latches, area stats)"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
@@ -47,7 +47,7 @@ help:
 	@echo "    make -C verification/directed [sim|stress|vcd|gtkwave|lint|clean]"
 	@echo "    make -C verification/cocotb"
 	@echo "    make -C verification/uvm      [smoke|random|err_inj|run|waves|clean]  (Xcelium)"
-	@echo "    make -C verification/formal   [all|credit_counter|reset_drain|cxl_lpddr5x_bridge|clean]"
+	@echo "    make -C verification/formal   [all|credit_counter|reset_drain|async_fifo|cxl_lpddr5x_bridge|clean]"
 
 # Verilator RTL lint (delegates to directed/, which runs verilator from repo root).
 lint:
