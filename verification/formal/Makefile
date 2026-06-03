@@ -25,7 +25,7 @@ async_fifo:
 
 cxl_lpddr5x_bridge:
 	$(SBY) -f cxl_lpddr5x_bridge.sby
-	@echo "[FORMAL] cxl_lpddr5x_bridge: PASS (bmc depth 24 + cover)"
+	@echo "[FORMAL] cxl_lpddr5x_bridge: PASS (bmc depth 24 + cover + unbounded prove)"
 
 clean:
 	rm -rf credit_counter_bmc credit_counter_cover credit_counter_prove \

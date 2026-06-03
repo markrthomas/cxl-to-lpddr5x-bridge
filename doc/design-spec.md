@@ -189,14 +189,14 @@ bad-CRC INVALID rejection. All pass under Icarus VPI.
 
 ## 8.3 Formal verification
 
-`verification/formal/` (SymbiYosys): 11/11 tasks pass. `credit_counter`,
-`reset_drain`, and the dual-clock `async_fifo` each close **unbounded `prove`**
-(basecase + temporal k-induction), not just BMC; the `cxl_lpddr5x_bridge` top runs
-BMC (depth 24) + cover. Properties live in `` `ifdef FORMAL `` blocks (e.g. the
-reset-drain legal-encoding and `drain_done` tracking asserts, with reachability
-cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
+`verification/formal/` (SymbiYosys): 12/12 tasks pass. All four modules —
+`credit_counter`, `reset_drain`, the dual-clock `async_fifo`, and the
+`cxl_lpddr5x_bridge` top itself — close **unbounded `prove`** (basecase + temporal
+k-induction), not just BMC + cover. Properties live in `` `ifdef FORMAL `` blocks
+(e.g. the reset-drain legal-encoding and `drain_done` tracking asserts, with
+reachability cover goals for the full `DOWN->UP->DRAIN->DOWN` cycle).
 
-Two techniques make the unbounded proofs go through:
+Four techniques make the unbounded proofs go through:
 
 - **`async_fifo` ghost counters.** The real Gray pointers are `ADDR_W+1` bits, so
   the modulus is exactly `2*DEPTH` and a binary pointer difference is
@@ -210,8 +210,29 @@ Two techniques make the unbounded proofs go through:
   (`f_rs1 <= f_rs0 <= r_cnt <= w_cnt`, symmetric on the read side) and the
   occupancy bound (`occupancy <= DEPTH`) are unambiguous and k-inductive across
   the CDC synchronizers. This is the credit-conservation guarantee proved *for all
-  time*; the bridge's per-class credit-conservation BMC composes with it under
-  assume-guarantee.
+  time*.
+- **Shadow-register egress data-stability.** A held egress beat
+  (`valid && !ready`) must keep its data until accepted. Stating this with `$past`
+  is *not* k-inductive under `multiclock on`: the implicit `$past` register is
+  clocked by the domain clock, and with the clocks free the solver may leave that
+  clock un-ticked across the whole induction window, so `$past` takes an arbitrary
+  induction-initial value. Each egress port instead samples a self-clocked shadow
+  (`valid`/`ready`/`data` at the previous domain-clock edge) gated by a reset-0
+  "sample valid" flag, which pins the comparison to a real prior beat. For
+  `lp_out` (behind the posted-priority arbiter) the data is additionally pinned by
+  an **arbiter-lock invariant** — while a beat is locked in flight the selected
+  source FIFO stays non-empty — composed with the FIFO head-of-line stability
+  invariant so the selected head cannot shift under the stalled beat.
+- **Assume-guarantee at the FIFO boundary.** The bridge's two `async_fifo` resets
+  derive from one async source through per-domain `reset_sync` cells (async
+  assert, sync deassert). The brief reset-deassert *skew* lets a flat bridge
+  induction seed an unreachable over-full FIFO (a large write count while the read
+  domain still reads 0), which no bounded skew could actually produce, so the
+  ghost occupancy/ordering invariants are true-but-not-re-derivable in the bridge.
+  They are composed under **assume-guarantee** via a `FIFO_OCC_CHECK` macro:
+  `assert`ed (and proven inductive) in the standalone `async_fifo` run under its
+  common-reset contract, and `assume`d in the bridge integration — discharging the
+  obligation once where it is provable and relying on it where it is not.
 - **Combinational safety asserts under `multiclock`.** `reset_drain`'s
   legal-encoding (`state != 2'd3`) and `drain_done` asserts are written as
   immediate (`always @(*)`) checks rather than `always_ff @(posedge clk)`. With

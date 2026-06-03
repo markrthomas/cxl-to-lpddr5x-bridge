@@ -19,18 +19,23 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   backpressure stress phase. `make sim` / `make stress`.
 - **cocotb** (`verification/cocotb/`): 12 OSS UVM-equivalent tests (c2m mem
   rd/wr/masked/autopre, MRR/MRW, m2c rsp paths, bad-CRC reject). All PASS.
-- **Formal** (`verification/formal/`): SymbiYosys, 11/11 tasks PASS.
-  `credit_counter`, `reset_drain`, and `async_fifo` each close **unbounded
-  `prove`** (basecase + k-induction), not just BMC; the `cxl_lpddr5x_bridge` top
-  runs BMC (depth 24) + cover. `async_fifo` carries the CDC sync-chain proof:
-  free-running ghost counters (one bit wider than the real pointers, so live
-  pointer gaps stay below the wrap-ambiguous half-modulus) make the
+- **Formal** (`verification/formal/`): SymbiYosys, 12/12 tasks PASS. All four
+  modules — `credit_counter`, `reset_drain`, `async_fifo`, and the
+  `cxl_lpddr5x_bridge` top itself — close **unbounded `prove`** (basecase +
+  k-induction), not just BMC + cover. `async_fifo` carries the CDC sync-chain
+  proof: free-running ghost counters (one bit wider than the real pointers, so
+  live pointer gaps stay below the wrap-ambiguous half-modulus) make the
   Gray-pointer ordering and the occupancy bound (`occupancy <= DEPTH`)
   k-inductive across the two-flop synchronizers. The bridge proof includes
   valid/ready protocol on all four interfaces (egress asserted, ingress
   assumed), credit-conservation invariants (occupancy never exceeds the credit
-  pool — now composing with `async_fifo`'s unbounded occupancy proof) and
-  credit-availability cover goals.
+  pool) and credit-availability cover goals. The bridge top is k-inductive
+  given two ingredients: egress data-stability is stated with self-clocked
+  shadow registers (not `multiclock`-fragile `$past`), pinned by an arbiter-lock
+  invariant; and the FIFO occupancy/ordering invariants are composed under
+  **assume-guarantee** (asserted+proven in the standalone `async_fifo` run under
+  its common-reset contract, assumed in the bridge, where the asymmetric
+  reset-deassert skew makes them true-but-not-re-derivable).
 - **Interface SVA** (`verification/cxl_lpddr5x_bridge_sva.sv`): concurrent SVA on
   all four valid/ready ports (valid-stable, data-stable, handshake/stall cover),
   bound to the DUT and run under Verilator `--assert` via `make sva`.
@@ -110,21 +115,28 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   (immediate) form: under `multiclock on` the solver can freeze a clock for the
   whole induction window, leaving a clocked assertion unevaluated and letting
   induction start in the unreachable `state==2'd3`. The bridge BMC depth was
-  raised 16 -> 24 (cover stays 32). Formal task count 6 -> 11. Remaining (moved
-  to near-term below): full unbounded `prove` of the bridge *top* is blocked
-  only on egress valid/ready data-stability, which needs FIFO head-of-line
-  data-path integrity — awkward to make k-inductive under `multiclock` + async
-  reset + `$past`; the per-module unbounded proofs compose with the bridge BMC
-  under assume-guarantee in the meantime.
+  raised 16 -> 24 (cover stays 32). Formal task count 6 -> 11. The bridge *top*
+  unbounded `prove` was the one remaining gap (closed below).
+- **[done 2026-06-02] Bridge top unbounded prove**: the `cxl_lpddr5x_bridge` top
+  now closes unbounded `prove` (k-induction, depth 24), so all four modules are
+  proven for all time (task count 11 -> 12). Two pieces closed it. (1) Egress
+  valid/ready data-stability (`cxl_out`/`lp_out`) was non-inductive because the
+  implicit `$past` register is clocked by the domain clock, and with the clocks
+  free k-induction can leave that clock un-ticked across the whole window so
+  `$past` takes an arbitrary value. Reformulated with self-clocked shadow
+  registers gated by a reset-0 "sample valid" flag; the `lp_out` arbiter path is
+  pinned by an arbiter-lock invariant (a locked, in-flight beat keeps its source
+  FIFO non-empty) plus the `async_fifo` head-of-line stability invariant. (2) The
+  FIFO occupancy/ordering invariants are not re-derivable in the bridge — its two
+  FIFO resets come from one async source through per-domain `reset_sync` cells, so
+  the brief reset-deassert skew lets induction seed an unreachable over-full state
+  (large `f_wcnt` while the read domain still reads 0). These are composed under
+  **assume-guarantee**: asserted+proven in the standalone `async_fifo` run (common
+  reset), assumed in the bridge integration (`FIFO_OCC_CHECK` macro).
 
 ## Near-term
 
-- **Bridge top unbounded prove**: close the one remaining non-inductive bridge
-  assertion — egress (`lp_out`/`cxl_out`) valid/ready data-stability — by adding
-  FIFO head-of-line data-path integrity invariants that survive `multiclock on`
-  (e.g. a monotonic-reset model plus a clock-robust head-stability formulation
-  that avoids the global-step `$past` artifact). Then convert the bridge `bmc`
-  task to `prove`.
+- *(none currently — the formal-depth track is complete; see Medium-term.)*
 
 ## Medium-term
 

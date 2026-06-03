@@ -575,38 +575,92 @@ module cxl_lpddr5x_bridge #(
     end
   end
 
+  // Arbiter-lock consistency (combinational): while a beat is locked in flight,
+  // the locked source FIFO is non-empty. The lock captures arb_sel_now (=
+  // !c2m_posted_r_empty) at lock time, and a non-empty FIFO cannot drain without
+  // a pop (which only happens on lp_out_ready, i.e. when the lock releases). This
+  // pins lp_out_data to a live, head-stable FIFO entry, which together with the
+  // async_fifo head-stability invariant makes the lp_out egress data-stability
+  // assertion k-inductive.
+  always @(*) begin
+    if (mem_rst_n && arb_locked_r) begin
+      if (arb_sel_posted_r) assert (!c2m_posted_r_empty);
+      else                  assert (!c2m_np_r_empty);
+    end
+  end
+
   // ---- Interface valid/ready protocol (matches verification/cxl_lpddr5x_bridge_sva.sv) ----
   // Producer drives valid+data, consumer drives ready. Ingress ports are ASSUMED
   // well-formed (environment contract); egress ports are ASSERTED (DUT obligation).
-  // clk-domain interfaces: cxl_in (ingress), cxl_out (egress).
+  // Ingress data-stability is an ASSUMED environment contract, stated with $past
+  // (a too-weak assume under multiclock is sound — it only restricts the env less).
+  // Egress data-stability is a DUT obligation and must be k-inductive: under
+  // `multiclock on` the implicit $past register is clocked by the domain clock, and
+  // k-induction is free to leave that clock un-ticked across the whole window, so
+  // $past takes an arbitrary value and the property is not inductive. Each egress
+  // port therefore uses a self-clocked shadow gated by a reset-0 "sample valid"
+  // flag, which pins the comparison to a real prior beat and closes induction.
+
+  // clk-domain ingress assumptions (cxl_in).
   always_ff @(posedge clk) begin
     if (clk_rst_n && $past(clk_rst_n)) begin
-      // CXL request ingress
       if ($past(cxl_in_valid) && !$past(cxl_in_ready)) begin
         assume (cxl_in_valid);
         assume (cxl_in_data == $past(cxl_in_data));
       end
-      // CXL completion egress
-      if ($past(cxl_out_valid) && !$past(cxl_out_ready)) begin
-        assert (cxl_out_valid);
-        assert (cxl_out_data == $past(cxl_out_data));
-      end
     end
   end
 
-  // mem_clk-domain interfaces: lp_in (ingress), lp_out (egress).
+  // mem_clk-domain ingress assumptions (lp_in).
   always_ff @(posedge mem_clk) begin
     if (mem_rst_n && $past(mem_rst_n)) begin
-      // LPDDR5X response ingress
       if ($past(lp_in_valid) && !$past(lp_in_ready)) begin
         assume (lp_in_valid);
         assume (lp_in_data == $past(lp_in_data));
       end
-      // LPDDR5X command egress
-      if ($past(lp_out_valid) && !$past(lp_out_ready)) begin
-        assert (lp_out_valid);
-        assert (lp_out_data == $past(lp_out_data));
-      end
+    end
+  end
+
+  // CXL completion egress (clk domain) — shadow-based stability.
+  reg              f_co_v_q;   // cxl_out_valid at previous clk edge
+  reg              f_co_r_q;   // cxl_out_ready at previous clk edge
+  reg [WIDTH-1:0]  f_co_d_q;   // cxl_out_data  at previous clk edge
+  reg              f_co_vld;   // a previous-cycle sample exists
+  always_ff @(posedge clk or negedge clk_rst_n) begin
+    if (!clk_rst_n) begin
+      f_co_v_q <= 1'b0; f_co_r_q <= 1'b0; f_co_d_q <= {WIDTH{1'b0}}; f_co_vld <= 1'b0;
+    end else begin
+      f_co_v_q <= cxl_out_valid; f_co_r_q <= cxl_out_ready;
+      f_co_d_q <= cxl_out_data;  f_co_vld <= 1'b1;
+    end
+  end
+  always @(*) begin
+    if (clk_rst_n && f_co_vld && f_co_v_q && !f_co_r_q) begin
+      assert (cxl_out_valid);
+      assert (cxl_out_data == f_co_d_q);
+    end
+  end
+
+  // LPDDR5X command egress (mem_clk domain) — shadow-based stability. Together with
+  // the arbiter-lock invariant (selected FIFO stays non-empty while a beat is
+  // locked) and the async_fifo head-of-line stability invariant, the selected FIFO
+  // head is pinned across the hold, so lp_out_data is stable.
+  reg              f_lo_v_q;   // lp_out_valid at previous mem_clk edge
+  reg              f_lo_r_q;   // lp_out_ready at previous mem_clk edge
+  reg [WIDTH-1:0]  f_lo_d_q;   // lp_out_data  at previous mem_clk edge
+  reg              f_lo_vld;   // a previous-cycle sample exists
+  always_ff @(posedge mem_clk or negedge mem_rst_n) begin
+    if (!mem_rst_n) begin
+      f_lo_v_q <= 1'b0; f_lo_r_q <= 1'b0; f_lo_d_q <= {WIDTH{1'b0}}; f_lo_vld <= 1'b0;
+    end else begin
+      f_lo_v_q <= lp_out_valid; f_lo_r_q <= lp_out_ready;
+      f_lo_d_q <= lp_out_data;  f_lo_vld <= 1'b1;
+    end
+  end
+  always @(*) begin
+    if (mem_rst_n && f_lo_vld && f_lo_v_q && !f_lo_r_q) begin
+      assert (lp_out_valid);
+      assert (lp_out_data == f_lo_d_q);
     end
   end
 

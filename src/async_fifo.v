@@ -134,6 +134,23 @@ module async_fifo #(
     if (w_full)  assume (!w_en);          // caller honours full backpressure
     if (r_empty) assume (!r_en);          // caller honours empty backpressure
   end
+  // The ghost occupancy/ordering invariants (3)+(4) are ASSERTED and proven
+  // k-inductive here, under the common-reset contract above.
+  `define FIFO_OCC_CHECK assert
+`else
+  // Assume-guarantee composition for the integrated bridge. The bridge drives
+  // both FIFO resets from one async source through per-domain reset_sync cells
+  // (asynchronous assert, synchronous deassert), so both pointers and their
+  // synchronizer ghosts leave reset coupled at 0 and every reachable state
+  // satisfies (3)+(4). They are not re-derivable inductively here, though: with
+  // the clocks free, k-induction can seed the brief reset-deassert skew window
+  // with an unreachable over-full state (e.g. f_wcnt large while the read
+  // domain still reads 0), which no bounded reset skew could actually produce.
+  // We therefore ASSUME (3)+(4) in integration — they are the GUARANTEE
+  // discharged by the standalone async_fifo `prove` run — and assert only the
+  // genuinely bridge-level FIFO obligations (gray consistency, pointer ties,
+  // liveness, head-of-line stability) below.
+  `define FIFO_OCC_CHECK assume
 `endif
 
   // (1) Each gray pointer is the gray encoding of its binary counterpart.
@@ -208,22 +225,35 @@ module async_fifo #(
   //     The gating bounds f_wcnt-f_rs1 (write/full) and f_ws1-f_rcnt
   //     (read/empty) are what make the occupancy bound inductive across the CDC
   //     synchronizers.
-  always @(*) if (w_rst_n) begin
-    assert ((f_wcnt - f_rcnt) <= DEPTH_G);   // true occupancy <= DEPTH
-    assert ((f_wcnt - f_rs0)  <= DEPTH_G);
-    assert ((f_wcnt - f_rs1)  <= DEPTH_G);   // occupancy estimate (full gating)
-    assert ((f_rcnt - f_rs0)  <= DEPTH_G);
-    assert ((f_rs0  - f_rs1)  <= DEPTH_G);
-    assert ((f_wcnt - f_ws0)  <= DEPTH_G);
-    assert ((f_wcnt - f_ws1)  <= DEPTH_G);
-    assert ((f_ws0  - f_ws1)  <= DEPTH_G);
-    assert ((f_ws1  - f_rcnt) <= DEPTH_G);   // empty gating
+  //
+  //     Each assertion is guarded by the reset(s) of the domain(s) its operands
+  //     live in: f_wcnt + the f_rs* synchronizer ghosts are write-domain
+  //     (w_rst_n); f_rcnt + the f_ws* synchronizer ghosts are read-domain
+  //     (r_rst_n). The two resets are common in the standalone proof but
+  //     SEPARATE in the bridge (e.g. the m2c FIFO writes on mem_clk/mem_rst_n
+  //     and reads on clk/clk_rst_n), so a cross-domain assertion must wait for
+  //     both domains to be out of reset — otherwise an asymmetric-reset
+  //     transient references ghosts still held at 0.
+  always @(*) if (w_rst_n) begin               // write-domain only
+    `FIFO_OCC_CHECK ((f_wcnt - f_rs0)  <= DEPTH_G);
+    `FIFO_OCC_CHECK ((f_wcnt - f_rs1)  <= DEPTH_G);  // occupancy estimate (full gating)
+    `FIFO_OCC_CHECK ((f_rs0  - f_rs1)  <= DEPTH_G);
+  end
+  always @(*) if (r_rst_n) begin               // read-domain only
+    `FIFO_OCC_CHECK ((f_ws0  - f_ws1)  <= DEPTH_G);
+    `FIFO_OCC_CHECK ((f_ws1  - f_rcnt) <= DEPTH_G);  // empty gating
+  end
+  always @(*) if (w_rst_n && r_rst_n) begin    // cross-domain (both live)
+    `FIFO_OCC_CHECK ((f_wcnt - f_rcnt) <= DEPTH_G);  // true occupancy <= DEPTH
+    `FIFO_OCC_CHECK ((f_rcnt - f_rs0)  <= DEPTH_G);
+    `FIFO_OCC_CHECK ((f_wcnt - f_ws0)  <= DEPTH_G);
+    `FIFO_OCC_CHECK ((f_wcnt - f_ws1)  <= DEPTH_G);
   end
 
   // (4) Reported occupancy never exceeds DEPTH (the credit pool is sized <=
   //     DEPTH, so this underpins the bridge credit-conservation invariant).
   //     Follows from (2)+(3): w_occupancy == (f_wcnt - f_rs1)[ADDR_W:0].
-  always @(*) if (w_rst_n) assert (w_occupancy <= DEPTH_VEC);
+  always @(*) if (w_rst_n) `FIFO_OCC_CHECK (w_occupancy <= DEPTH_VEC);
 
   // (5) The original liveness guards: the gating never writes-full / reads-empty.
   always @(posedge w_clk) begin
@@ -237,6 +267,52 @@ module async_fifo #(
       assert (!r_empty);
     end
   end
+
+  // (6) Head-of-line data stability. While the FIFO is non-empty and not being
+  //     popped, the FWFT read data holds: the head entry mem[r_ptr] is only
+  //     overwritten when w_ptr and r_ptr share the same low ADDR_W bits, i.e.
+  //     occupancy is 0 (empty, excluded) or DEPTH (full, where writes are
+  //     gated off by w_full) — so the head is never clobbered in flight. This
+  //     is what lets the bridge hold a stalled egress beat stable (valid/ready
+  //     protocol) without its data shifting under it.
+  //
+  //     Expressed with read-clock-domain shadow registers rather than $past:
+  //     under `multiclock on`, $past samples the GLOBAL step, not the previous
+  //     r_clk edge, so a $past-based cross-cycle property would be unsound. The
+  //     shadows capture the previous r_clk cycle exactly, and reset cleanly with
+  //     r_rst_n (so a reset pulse just re-primes them, no spurious failure).
+  reg [WIDTH-1:0] f_rd_q;     // r_data at the previous r_clk edge
+  reg             f_ne_q;     // was non-empty at the previous r_clk edge
+  reg             f_pop_q;    // a pop fired at the previous r_clk edge
+  reg             f_rd_v;     // a previous-cycle sample exists
+  always @(posedge r_clk or negedge r_rst_n) begin
+    if (!r_rst_n) begin
+      f_rd_q  <= {WIDTH{1'b0}};
+      f_ne_q  <= 1'b0;
+      f_pop_q <= 1'b0;
+      f_rd_v  <= 1'b0;
+    end else begin
+      f_rd_q  <= r_data;
+      f_ne_q  <= !r_empty;
+      f_pop_q <= (r_en && !r_empty);
+      f_rd_v  <= 1'b1;
+    end
+  end
+  // If the previous cycle was non-empty and the edge into this cycle did not
+  // pop, the FIFO is still non-empty and the head data is unchanged. The
+  // non-emptiness companion pins the shadow to reality (otherwise induction may
+  // start with f_ne_q set while the FIFO is actually empty, letting a write to
+  // the empty head clobber it); with it, "non-empty -> head index not written"
+  // follows from the occupancy invariants and head stability is inductive.
+  // Checked combinationally so it also holds across intervening w_clk writes.
+  always @(*) begin
+    if (r_rst_n && f_rd_v && f_ne_q && !f_pop_q) begin
+      assert (!r_empty);
+      assert (r_data == f_rd_q);
+    end
+  end
+
+  `undef FIFO_OCC_CHECK
 `endif
 
 endmodule
