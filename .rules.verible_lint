@@ -1,0 +1,27 @@
+# Verible style-lint rule configuration — project baseline for cxl_lpddr5x_bridge.
+#
+# Consumed by `verible-verilog-lint --rules_config .rules.verible_lint` (see the
+# `verible-lint` Makefile target and the non-blocking `verible` CI job). Applied
+# to the synthesizable RTL (the rtl.f source list). The lint is ADVISORY: the CI
+# `verible` job is continue-on-error and never gates merges — but the baseline is
+# tuned to be CLEAN, so any new finding flags a real house-style deviation.
+#
+# Format: one `[+-]rule_name[=param:value]` per line; `+` enables (optionally with
+# a parameter), `-` disables. Unlisted rules keep their Verible default state.
+
+# 100-column lines (matches the Verilator/house wrap width).
++line-length=length:100
+
+# Constant naming: house style is ALL_CAPS_SNAKE (FULL_MASK, S_DOWN, CNT_MAX),
+# not Verible's default UpperCamelCase for localparams.
++parameter-name-style=localparam_style:ALL_CAPS
+
+# Deliberate house-style waivers (idioms, not defects):
+#  - `always @(*)` is used throughout (incl. the formal combinational immediate
+#    asserts) rather than `always_comb`.
+-always-comb
+#  - State/mask localparams are intentionally untyped (`localparam S_UP = ...`);
+#    width is carried by the consuming signals.
+-explicit-parameter-storage-type
+#  - Memories are declared with the conventional `[0:DEPTH-1]` element range.
+-unpacked-dimensions-range-ordering

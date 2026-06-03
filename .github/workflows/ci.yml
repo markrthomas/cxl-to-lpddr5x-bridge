@@ -11,6 +11,8 @@ on:
 env:
   # Pin OSS CAD Suite for reproducible formal CI; bump when upgrading tools.
   OSS_CAD_SUITE_VERSION: "2026-04-13"
+  # Pinned Verible release for the advisory style-lint job (chipsalliance/verible).
+  VERIBLE_VERSION: "v0.0-3946-g851d3ff4"
 
 jobs:
   regress:
@@ -114,3 +116,25 @@ jobs:
 
       - name: SymbiYosys formal (bmc + cover + unbounded prove for all four modules incl. bridge top, depth 24)
         run: make formal
+
+  # Advisory SystemVerilog style-lint + format check (Verible). Non-blocking:
+  # the whole job is continue-on-error so style findings surface in the logs
+  # without gating merges. Independent of `regress` so feedback lands fast.
+  verible:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Verible ${{ env.VERIBLE_VERSION }}
+        run: |
+          set -euo pipefail
+          url="https://github.com/chipsalliance/verible/releases/download/${VERIBLE_VERSION}/verible-${VERIBLE_VERSION}-linux-static-x86_64.tar.gz"
+          echo "Fetching $url"
+          curl -fsSL "$url" -o /tmp/verible.tar.gz
+          mkdir -p /tmp/verible
+          tar -xzf /tmp/verible.tar.gz -C /tmp/verible --strip-components=1
+          echo "/tmp/verible/bin" >> "$GITHUB_PATH"
+
+      - name: Verible style-lint (advisory; .rules.verible_lint)
+        run: make verible-lint

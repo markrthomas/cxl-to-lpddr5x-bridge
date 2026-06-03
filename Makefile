@@ -18,12 +18,20 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth ci cocotb uvm clean
+
+# Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
+# = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
+VERIBLE_SRCS  := $(BRIDGE_SRCS)
+VERIBLE_LINT  ?= verible-verilog-lint
+VERIBLE_FMT   ?= verible-verilog-format
 
 help:
 	@echo "cxl_lpddr5x_bridge — common targets"
 	@echo ""
 	@echo "  make lint      — Verilator --lint-only on all RTL modules"
+	@echo "  make verible-lint   — Verible SystemVerilog style-lint (advisory; .rules.verible_lint)"
+	@echo "  make verible-format — Verible auto-format the RTL in place (opt-in, local; reflows hand-alignment)"
 	@echo "  make sim       — Icarus directed simulation (default + smoke)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make vcd       — Icarus sim dumping a VCD (verification/directed/build/waves.vcd)"
@@ -52,6 +60,24 @@ help:
 # Verilator RTL lint (delegates to directed/, which runs verilator from repo root).
 lint:
 	$(MAKE) -C verification/directed lint
+
+# Verible SystemVerilog style-lint (advisory house-style check; see .rules.verible_lint).
+# Skips cleanly when verible is not installed so it never blocks a local build.
+verible-lint:
+	@set -e; \
+	command -v $(VERIBLE_LINT) >/dev/null 2>&1 || { echo "[VERIBLE] $(VERIBLE_LINT) not on PATH; skipping (install from chipsalliance/verible)"; exit 0; }; \
+	$(VERIBLE_LINT) --rules_config .rules.verible_lint $(VERIBLE_SRCS); \
+	echo "[VERIBLE] style-lint clean ($(words $(VERIBLE_SRCS)) files)"
+
+# Verible auto-format, rewriting the RTL in place. OPT-IN / LOCAL ONLY: the RTL is
+# deliberately hand-aligned (column-aligned ports, assignments, case arms), which
+# verible-verilog-format would reflow, so this is NOT run in CI and not a gate —
+# it is here for one-off mechanical cleanups. Review the diff before committing.
+verible-format:
+	@set -e; \
+	command -v $(VERIBLE_FMT) >/dev/null 2>&1 || { echo "[VERIBLE] $(VERIBLE_FMT) not on PATH; skipping"; exit 0; }; \
+	$(VERIBLE_FMT) --inplace $(VERIBLE_SRCS); \
+	echo "[VERIBLE] formatted $(words $(VERIBLE_SRCS)) files in place (review the diff)"
 
 # Icarus directed simulation.
 sim:

@@ -133,6 +133,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   (large `f_wcnt` while the read domain still reads 0). These are composed under
   **assume-guarantee**: asserted+proven in the standalone `async_fifo` run (common
   reset), assumed in the bridge integration (`FIFO_OCC_CHECK` macro).
+- **[done 2026-06-02] Verible style-lint + CI hygiene**: added a Google Verible
+  SystemVerilog style-lint as a non-blocking (`continue-on-error`) CI job and a
+  `make verible-lint` target, driven by a tuned `.rules.verible_lint` baseline
+  (house style: `always @(*)`, `ALL_CAPS_SNAKE` localparams, untyped state/mask
+  localparams, `[0:N-1]` memories, 100-col). The baseline is CLEAN on the
+  synthesizable RTL — fixed the handful of real findings it surfaced (trailing
+  whitespace, four >100-col lines). Pinned Verible (`v0.0-3946-g851d3ff4`) in the
+  workflow env and added a "Pinned tool versions" table to the README. Fixed the
+  broken CI status badge URL (wrong repo slug `cxl_lpddr5x_bridge` ->
+  `cxl-to-lpddr5x-bridge`, modern workflow-file badge). `make verible-format` is
+  provided but opt-in/local only (it would reflow the deliberate hand-alignment),
+  so formatting is not gated.
 
 ## Near-term
 
@@ -140,9 +152,6 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Medium-term
 
-- **Verible lint + format**: add Google Verible style-lint + formatter as a
-  non-blocking CI job for SV consistency; add a CI status badge and pinned
-  OSS-tool versions to the README.
 - **UVM bench extensions**: the base env has landed (see Current state). A
   `cxl_lpddr5x_link_down_test` (drops `ctrl_vif.link_up` mid-run, waits for
   `drain_done`, then restores) and bursty (multi-cycle) backpressure on both

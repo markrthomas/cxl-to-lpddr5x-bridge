@@ -1,4 +1,4 @@
-// Credit pulse synchronizer: crosses a single-cycle credit return pulse 
+// Credit pulse synchronizer: crosses a single-cycle credit return pulse
 // from the source clock domain to the destination clock domain.
 // Uses a toggle-based handshake to ensure no pulses are lost.
 

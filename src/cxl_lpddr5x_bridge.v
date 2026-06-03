@@ -435,20 +435,23 @@ module cxl_lpddr5x_bridge #(
       link_up_clk_q <= 1'b0;
     end else begin
       link_up_clk_q <= link_up_clk;
-      
+
       if (m2c_crc_err_clk && crc_err_cnt != 16'hFFFF)
         crc_err_cnt <= crc_err_cnt + 1'b1;
-      
+
       if (link_up_clk_q && !link_up_clk && drain_cnt != 16'hFFFF)
         drain_cnt <= drain_cnt + 1'b1;
 
       // max_occ_* are 8-bit observability ports; zero-extend OCC_W-wide
       // occupancy to 8 bits (DEPTH <= 128) -- no SystemVerilog size-casts so
       // Icarus is happy too.
-      if ({{(8-OCC_W){1'b0}}, c2m_p_occ}  > max_occ_c2m) max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_p_occ};
-      if ({{(8-OCC_W){1'b0}}, c2m_np_occ} > max_occ_c2m) max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_np_occ};
+      if ({{(8-OCC_W){1'b0}}, c2m_p_occ}  > max_occ_c2m)
+        max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_p_occ};
+      if ({{(8-OCC_W){1'b0}}, c2m_np_occ} > max_occ_c2m)
+        max_occ_c2m <= {{(8-OCC_W){1'b0}}, c2m_np_occ};
 
-      if ({{(8-OCC_W){1'b0}}, m2c_occ_clk} > max_occ_m2c) max_occ_m2c <= {{(8-OCC_W){1'b0}}, m2c_occ_clk};
+      if ({{(8-OCC_W){1'b0}}, m2c_occ_clk} > max_occ_m2c)
+        max_occ_m2c <= {{(8-OCC_W){1'b0}}, m2c_occ_clk};
     end
   end
 

@@ -1,6 +1,6 @@
 # CXL to LPDDR5X Bridge
 
-[![CI Status](https://github.com/markrthomas/cxl_lpddr5x_bridge/workflows/CI/badge.svg)](https://github.com/markrthomas/cxl_lpddr5x_bridge/actions)
+[![CI](https://github.com/markrthomas/cxl-to-lpddr5x-bridge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/markrthomas/cxl-to-lpddr5x-bridge/actions/workflows/ci.yml)
 
 Experimental **Verilog / SystemVerilog** RTL for a bridge between a **CXL.mem**
 host interface and an **LPDDR5X** DRAM command channel (a DFI-style command/response abstraction).
@@ -100,6 +100,8 @@ make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)
 make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
+make verible-lint   # Verible SystemVerilog style-lint (advisory; .rules.verible_lint)
+make verible-format # Verible auto-format the RTL in place (opt-in, local — reflows hand-alignment)
 make ci          # regress + coverage + sva + formal + cocotb
 ```
 
@@ -146,8 +148,20 @@ stress), then fans out to parallel jobs that each depend on it:
 | `random` | `make vlt-rand RAND_SEED=<n>` | seed matrix `[1..4]`; per-seed VCD artifact |
 | `cocotb` | `make cocotb` | 12 cocotb tests |
 | `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite); BMC + cover + unbounded `prove` |
+| `verible` | `make verible-lint` | **advisory** SystemVerilog style-lint (`continue-on-error`, never gates) |
 
 The UVM bench is **not** in CI (it needs a commercial simulator license).
+
+### Pinned tool versions
+
+Reproducible-build tools are version-pinned (bump in `.github/workflows/ci.yml`):
+
+| Tool | Version | Pinned in |
+|:---|:---|:---|
+| OSS CAD Suite (Yosys / SymbiYosys) | `2026-04-13` | `env.OSS_CAD_SUITE_VERSION` |
+| Verible (style-lint / format) | `v0.0-3946-g851d3ff4` | `env.VERIBLE_VERSION` |
+| cocotb | `1.8.1` | `cocotb` job (`pip install`) |
+| Verilator / Icarus Verilog | distro `apt` (ubuntu-latest) | `regress` job |
 
 ## Documentation
 

@@ -34,7 +34,9 @@ module reset_drain (
         S_UP:    if (!link_up)   state <= S_DRAIN;
         S_DRAIN: if ( all_empty) state <= S_DOWN;
         // verilator coverage_off
-        default:                 state <= S_DOWN;  // defensive: unreachable — all 3 legal states enumerated; recovers from an illegal/X encoding
+        // defensive: unreachable — all 3 legal states enumerated above; this
+        // recovers the FSM from an illegal/X encoding.
+        default:                 state <= S_DOWN;
         // verilator coverage_on
       endcase
     end
