@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth perf perf-sweep perf-selftest ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -46,6 +46,9 @@ help:
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make formal    — SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)"
 	@echo "  make synth     — Yosys synthesis smoke (catch latches, area stats)"
+	@echo "  make perf      — LPDDR5X bank/timing model perf run (latency + throughput);"
+	@echo "                   knobs: PERF_LOAD=90 PERF_PATTERN=rand|stream|hotbank PERF_SEED=1 PERF_CYCLES=20000"
+	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
 	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
@@ -220,6 +223,56 @@ vlt-rand:
 # Run the randomized harness then open its VCD in GTKWave (requires gtkwave).
 vlt-rand-gtkwave: vlt-rand
 	gtkwave $(RAND_VCD)
+
+# perf: latency / throughput characterization. Drives protocol-legal CXL traffic
+# and services lp_out through the LPDDR5X bank/timing scheduler model
+# (sim/lpddr5x_timing_model.h), which returns lp_in responses after a bank-state
+# derived latency, closing a realistic end-to-end loop. Built without --trace for
+# speed. PERF_PARAMS passes DUT parameter overrides (-GFIFO_DEPTH=… etc.) so the
+# sweep can re-elaborate; the +knobs pick load / pattern / seed / run length.
+# Degrades to a stub (exit 0) if verilator or sim_perf.cpp is absent.
+PERF_DIR     := sim/obj_dir_perf
+PERF_PARAMS  ?=
+PERF_SEED    ?=
+PERF_CYCLES  ?=
+PERF_LOAD    ?=
+PERF_BP      ?=
+PERF_PATTERN ?=
+perf:
+	@set -e; \
+	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[PERF] verilator not on PATH; skipping"; exit 0; }; \
+	if [ ! -f sim/sim_perf.cpp ]; then \
+		echo "[PERF] sim/sim_perf.cpp not present; skipping"; \
+		exit 0; \
+	fi; \
+	rm -rf $(PERF_DIR); \
+	$(VERILATOR) -cc $(BRIDGE_SRCS) --top-module cxl_lpddr5x_bridge \
+		--Mdir $(PERF_DIR) -Isrc $(PERF_PARAMS) \
+		-Wno-DECLFILENAME -Wno-WIDTH -Wno-fatal; \
+	$(MAKE) -C $(PERF_DIR) -f Vcxl_lpddr5x_bridge.mk; \
+	g++ -O2 -o $(PERF_DIR)/sim_perf \
+		sim/sim_perf.cpp $(PERF_DIR)/Vcxl_lpddr5x_bridge__ALL.a \
+		-I$(PERF_DIR) -I$(VERILATOR_INC) -I$(VERILATOR_INC)/vltstd \
+		$(VERILATOR_CPP) -pthread -lm; \
+	( cd $(PERF_DIR) && ./sim_perf \
+		$(if $(PERF_SEED),+seed=$(PERF_SEED)) \
+		$(if $(PERF_CYCLES),+cycles=$(PERF_CYCLES)) \
+		$(if $(PERF_LOAD),+load=$(PERF_LOAD)) \
+		$(if $(PERF_BP),+bp=$(PERF_BP)) \
+		$(if $(PERF_PATTERN),+pattern=$(PERF_PATTERN)) )
+
+# perf-sweep: characterize latency/throughput across credit + FIFO-depth settings
+# (re-elaborates the DUT per point via PERF_PARAMS). See sim/perf_sweep.sh.
+perf-sweep:
+	@sim/perf_sweep.sh
+
+# perf-selftest: deterministic unit test of the LPDDR5X timing model's arithmetic
+# (plain g++, no Verilator). Fails (non-zero) on any timing mismatch.
+perf-selftest:
+	@set -e; \
+	if [ ! -f sim/tb_timing_model.cpp ]; then echo "[PERF-SELFTEST] absent; skipping"; exit 0; fi; \
+	g++ -O2 -Wall -Isim -o sim/tb_timing_model sim/tb_timing_model.cpp; \
+	./sim/tb_timing_model
 
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:

@@ -100,6 +100,9 @@ make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)
 make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
+make perf        # LPDDR5X bank/timing model: end-to-end latency + throughput (PERF_PATTERN=rand|stream|hotbank)
+make perf-sweep  # characterize latency/throughput vs credit + FIFO-depth settings
+make perf-selftest # unit-check the timing model's arithmetic (plain g++)
 make verible-lint   # Verible SystemVerilog style-lint (advisory; .rules.verible_lint)
 make verible-format # Verible auto-format the RTL in place (opt-in, local — reflows hand-alignment)
 make ci          # regress + coverage + sva + formal + cocotb
@@ -134,6 +137,54 @@ error pulses) so you can jump straight to the interesting region:
 ```bash
 make vlt-rand RAND_SEED=42 RAND_CYCLES=4000   # the seed is printed and replayable
 ```
+
+## Performance characterization
+
+`make perf` attaches a behavioral **LPDDR5X bank/timing scheduler model**
+(`sim/lpddr5x_timing_model.h`) as the memory side of the bridge. Every command
+the bridge emits on `lp_out` is decoded and served by the model, which returns
+the matching `lp_in` response after a latency derived from bank state and a
+JEDEC-style timing set — closing a realistic end-to-end loop so the harness
+(`sim/sim_perf.cpp`) can measure latency and throughput. The model covers 16
+banks in 4 bank groups (row hit / miss / empty; tRCD, tRP, tRAS, tRC, tCCD_L/S,
+tRRD_L/S, tFAW, tRL/tWL, tWR, tRTP) and a **finite controller command queue** that
+backpressures `lp_out_ready`, so an offered load above the memory's sustainable
+rate backs up through the bridge credits instead of producing an unbounded
+schedule. It is an in-order (FCFS) *characterization* model, not a sign-off
+memory model, and scores no functional correctness (directed / cocotb / formal
+own that).
+
+```bash
+make perf PERF_PATTERN=stream           # high locality + bank parallelism
+make perf PERF_PATTERN=rand             # mostly row-miss, spread across banks
+make perf PERF_PATTERN=hotbank          # few banks -> bank-cycle contention
+make perf PERF_LOAD=60 PERF_SEED=3      # offered load / seed knobs
+make perf-sweep                         # tabulate the latency/throughput knee
+```
+
+`make perf` prints the row hit/miss mix, command/completion throughput, and
+end-to-end latency percentiles (min/mean/p50/p95/p99/max, host clk cycles).
+Address locality dominates: `stream` (bank-interleaved, high row-hit rate)
+sustains roughly **2× the throughput and the lowest latency**, while `hotbank`
+(constant row conflicts on a few banks) is the worst. `make perf-sweep`
+re-elaborates the DUT across credit + FIFO-depth points: throughput is
+**memory-bound** — flat across the credit range, set by locality — while
+end-to-end latency grows steadily, so credits beyond the small pool needed to
+cover the round-trip are pure latency cost (Little's law):
+
+```
+pattern    cred     hit%  cmd/cyc   cpl/cyc  e2e_mean   e2e_p95   e2e_p99
+stream        4     62.0    0.198     0.140     187.7       251       285
+stream        8     61.9    0.157     0.111     235.6       390       479
+stream       16     60.0    0.153     0.108     310.9       566       639
+stream       32     56.6    0.148     0.104     464.1       930      1062
+rand          8      0.0    0.074     0.052     329.1       622       716
+hotbank       8      9.6    0.045     0.032     441.0       827       935
+```
+
+`make perf-selftest` is a deterministic g++ unit test that pins the model's
+timing arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes
+use tWL, mode-register access = tMRR).
 
 ## Continuous Integration
 
@@ -184,7 +235,7 @@ ratios (1:1, 2:1, 1:3) and traffic patterns.
 |:---|:---|
 | Protocol compliance | The 64-bit packet format is a compact model, not a full CXL.mem or LPDDR5X wire encoding. |
 | Payload data | Header/control fields are modeled; multi-beat payload transport is not implemented. |
-| Memory model | The downstream side is a command/response abstraction; no bank/timing (tRCD/tRP/…) scheduler. |
+| Memory model | The bridge datapath treats the downstream side as a command/response abstraction (no bank/timing scheduler in RTL). An LPDDR5X bank/timing model exists as a **sim-only** perf-characterization harness (`make perf`), not part of the datapath. |
 | Link training | `link_up` is an external input consumed by the reset-drain FSM; PHY training is out of scope. |
 | UVM | A full UVM bench is present (`verification/uvm/`) but targets a commercial simulator (Xcelium) and is excluded from OSS CI; the OSS executable regression is directed + cocotb + randomized (`vlt-rand`) + formal. |
 

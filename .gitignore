@@ -11,7 +11,9 @@ sim/obj_dir_cov/
 sim/obj_dir_sva/
 sim/obj_dir_vcd/
 sim/obj_dir_rand/
+sim/obj_dir_perf/
 sim/coverage.info
+sim/tb_timing_model
 doc/build/
 
 # SymbiYosys (Formal verification workdirs)

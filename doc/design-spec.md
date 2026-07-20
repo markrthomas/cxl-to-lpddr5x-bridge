@@ -338,6 +338,55 @@ jobs that each `needs: regress`:
 
 The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
 
+## 8.9 Performance characterization (LPDDR5X bank/timing model)
+
+`sim/lpddr5x_timing_model.h` is a behavioral **LPDDR5X bank/timing scheduler
+model**, and `sim/sim_perf.cpp` (`make perf`) is a Verilator harness that attaches
+it as the memory side of the bridge. Every command the bridge emits on `lp_out`
+is decoded and served by the model, which schedules the matching `lp_in` response
+at a completion time derived from bank state and a JEDEC-style timing set; the
+harness correlates each request (accepted on `cxl_in`) to its completion (on
+`cxl_out`) by a class-partitioned tag and reports latency and throughput. It is a
+*characterization* tool and scores no functional correctness -- the directed TB,
+cocotb, and formal own that.
+
+The model tracks **16 banks in 4 bank groups** (addressed by the flit's ADDR
+field `{bank[15:12], row[11:0]}`) and classifies each access as a row hit, miss,
+or empty-bank open. Latency comes from the first-order effects that dominate DRAM
+performance:
+
+| Effect | Parameters | Role |
+|:---|:---|:---|
+| Row activate / precharge | tRCD, tRP, tRAS, tRC | miss/empty penalty; bank cycle time |
+| Column throughput | tCCD_L / tCCD_S | column-command spacing (same / different bank group) |
+| Activate throttles | tRRD_L / tRRD_S, tFAW | activate-to-activate and four-activate window |
+| Access latency | tRL, tWL, tBURST | read/write column to first data + burst occupancy |
+| Recovery / turnaround | tWR, tRTP | write-recovery and read-to-precharge before a precharge |
+| Mode register | tMRR | fixed MRR/MRW latency (no bank state) |
+
+Auto-precharge variants (RDA/WRA) close the row after the access. A **finite
+controller command queue** backpressures `lp_out_ready` when the model's schedule
+horizon runs a queue-depth ahead of the current cycle, so an offered load above
+the memory's sustainable rate backs up through the bridge's credits rather than
+producing an unbounded schedule -- latency-under-load then follows Little's law
+from the queue depth, as on real hardware. The model is **in-order (FCFS)**: no
+FR-FCFS reordering or write buffering (a documented simplification, not a sign-off
+memory model).
+
+`make perf` reports the row hit/miss mix, command/completion throughput, and
+end-to-end latency percentiles for a chosen offered load (`PERF_LOAD`), seed, and
+address-locality pattern (`PERF_PATTERN` = `rand` / `stream` / `hotbank`).
+Locality dominates the result: `stream` (bank-interleaved, high row-hit rate)
+sustains ~2x the throughput at the lowest latency; `hotbank` (constant conflicts
+on a few banks) is worst. `make perf-sweep` re-elaborates the DUT across credit +
+FIFO-depth points: throughput is memory-bound (flat across the credit range, set
+by locality) while end-to-end latency grows steadily, so credits beyond the small
+pool needed to cover the round-trip are pure latency cost -- a useful signal for
+right-sizing the buffers.
+`make perf-selftest` is a deterministic g++ unit test that pins the model's timing
+arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes use
+tWL). None of the perf targets are CI gates.
+
 # 9. Roadmap (phased milestones)
 
 The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
@@ -347,7 +396,7 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 - **Formal depth** -- *done*: `credit_counter` / `reset_drain` / `async_fifo` close unbounded `prove`, the CDC occupancy bound is k-inductive (ghost counters, §8.3), and the bridge BMC depth is raised to 24. Remaining: the bridge *top* unbounded `prove`, blocked only on egress valid/ready data-stability (needs FIFO head-of-line data-path integrity that survives `multiclock` + async reset + `$past`).
 - **Synthesis smoke + CDC audit** -- a Yosys `synth; stat` pass plus a structural check that every crossing goes through a synchronizer.
 - **UVM extensions** -- the base env has landed (§8.7); add a link-down/drain test, credit stress, and the parameter sweep driven from UVM.
-- **Memory model** -- LPDDR5X bank/timing scheduler for end-to-end latency checks.
+- **Memory model** -- *done*: an LPDDR5X bank/timing scheduler model (§8.9) closes a realistic end-to-end loop for latency + throughput characterization vs locality, credit, and FIFO-depth settings (`make perf` / `perf-sweep`). Sim-only; not in the RTL datapath.
 
 # 10. Implementation limits
 
@@ -355,7 +404,7 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 |:---|:---|
 | Protocol compliance | Compact 64-bit model, not a full CXL.mem / LPDDR5X wire encoding. |
 | Payload data | Header/control modeled; multi-beat payload transport not implemented. |
-| Memory model | Command/response abstraction; no bank/timing scheduler. |
+| Memory model | RTL datapath is a command/response abstraction (no bank/timing scheduler); an LPDDR5X bank/timing model exists as a sim-only perf harness (§8.9, `make perf`). |
 | Link training | `link_up` is an external input; PHY training is out of scope. |
 | UVM | Full bench present (`verification/uvm/`, §8.7), but it targets a commercial simulator (Xcelium); the OSS executable regression is directed + cocotb + randomized (`vlt-rand`) + formal. |
 
@@ -370,8 +419,9 @@ verification/
   cocotb/                         cocotb tests + Python gold model
   formal/                         SymbiYosys .sby files + Makefile
   uvm/                            full UVM 1.2 bench (Cadence Xcelium; not in CI)
-sim/                              Verilator harnesses: sim_main.cpp (coverage / SVA), sim_rand.cpp (randomized + waveform / --assert)
+sim/                              Verilator harnesses: sim_main.cpp (coverage / SVA), sim_rand.cpp (randomized + waveform / --assert),
+                                  sim_perf.cpp + lpddr5x_timing_model.h (perf model), tb_timing_model.cpp (model self-test)
 doc/                              this spec, PLAN.md, PDF Makefile
-Makefile                          root gates: lint/sim/stress/regress/vcd/gtkwave/vlt-vcd/vlt-rand/coverage/sva/cocotb/uvm/formal/ci
+Makefile                          root gates: lint/sim/stress/regress/vcd/gtkwave/vlt-vcd/vlt-rand/coverage/sva/cocotb/uvm/perf/formal/ci
 .github/workflows/ci.yml          regress -> coverage / sva / random / cocotb / formal
 ```

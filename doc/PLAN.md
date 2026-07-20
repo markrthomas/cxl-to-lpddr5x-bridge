@@ -5,7 +5,7 @@ interface, with credit-based flow control, async-FIFO clock-domain crossing, and
 per-message CRC validation. Verified with an OSS-only toolchain (Icarus +
 Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
-## Current state (2026-06-01)
+## Current state (2026-07-20)
 
 - **RTL** (`src/`): `cxl_lpddr5x_bridge` top + `async_fifo`, `cdc_sync`,
   `reset_sync`, `reset_drain`, `credit_counter`, `credit_pulse_sync`, and a
@@ -53,6 +53,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   functional coverage, and smoke / random / err_inj tests. Targets Cadence
   Xcelium (`make uvm`); degrades to a no-op without `xrun` and is deliberately
   outside the OSS CI gate (commercial license).
+- **Performance model** (`sim/lpddr5x_timing_model.h`, `sim/sim_perf.cpp`): an
+  LPDDR5X bank/timing scheduler model (16 banks / 4 bank groups; tRCD/tRP/tRAS/tRC,
+  tCCD_L/S, tRRD_L/S, tFAW, tRL/tWL, tWR/tRTP; a finite controller command queue
+  for backpressure) serves the `lp_out` command stream and returns `lp_in`
+  responses after a bank-state-derived latency, closing a realistic end-to-end
+  loop. `make perf` reports end-to-end latency (min/mean/p50/p95/p99/max), the row
+  hit/miss mix, and command/completion throughput for a chosen offered load and
+  address-locality pattern (`rand`/`stream`/`hotbank`); `make perf-sweep` tabulates
+  the latency/throughput knee across credit + FIFO-depth settings; `make
+  perf-selftest` unit-checks the model's timing arithmetic (plain g++). It is a
+  characterization tool, **not** a correctness gate (directed / cocotb / formal own
+  correctness).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
   vlt-rand/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
   regress → coverage / sva / random / cocotb / formal (the `random` job uploads
@@ -133,6 +145,28 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   (large `f_wcnt` while the read domain still reads 0). These are composed under
   **assume-guarantee**: asserted+proven in the standalone `async_fifo` run (common
   reset), assumed in the bridge integration (`FIFO_OCC_CHECK` macro).
+- **[done 2026-07-20] LPDDR5X bank/timing scheduler model + perf harness**: added
+  a behavioral LPDDR5X bank/timing model (`sim/lpddr5x_timing_model.h`) and a
+  Verilator perf harness (`sim/sim_perf.cpp`, `make perf`) that attaches it as the
+  memory side — every `lp_out` command is decoded and served by the model, which
+  returns the matching `lp_in` response after a latency derived from bank state
+  (row hit vs miss/empty), the JEDEC-style timing set (tRCD/tRP/tRAS/tRC, tCCD_L/S,
+  tRRD_L/S, tFAW, tRL/tWL, tWR/tRTP, tMRR), and a finite controller command queue
+  that backpressures `lp_out_ready` so an over-offered load backs up through the
+  bridge credits instead of producing an unbounded schedule. The harness
+  correlates each request (cxl_in accept) to its completion (cxl_out) by a
+  partitioned tag and reports end-to-end latency percentiles, the row hit/miss mix,
+  and command/completion throughput, under a chosen offered load and locality
+  pattern (`rand`/`stream`/`hotbank`). `make perf-sweep` re-elaborates the DUT
+  across credit + FIFO-depth points and tabulates the tradeoff: throughput is
+  memory-bound (flat, set by locality) while latency grows with credits, so
+  over-crediting is pure latency cost (Little's law);
+  `make perf-selftest` is a deterministic g++ unit test pinning the model's timing
+  arithmetic (row-hit = tRL+tBURST, miss adds tRP+tRCD, writes use tWL). The model
+  is in-order (FCFS), documented as a characterization tool, not a sign-off memory
+  model or a correctness gate. Validated: stream (locality + bank parallelism)
+  delivers ~2x the throughput and lowest latency of rand; hotbank (bank conflicts)
+  is worst; self-test passes.
 - **[done 2026-06-02] Verible style-lint + CI hygiene**: added a Google Verible
   SystemVerilog style-lint as a non-blocking (`continue-on-error`) CI job and a
   `make verible-lint` target, driven by a tuned `.rules.verible_lint` baseline
@@ -162,8 +196,7 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Long-term
 
-- LPDDR5X bank/timing scheduler model for end-to-end latency checks; throughput
-  characterization vs credit / FIFO-depth settings (reuse the `sim_rand` beat
-  counters as a perf harness).
 - Synthesis + timing hooks beyond the smoke above; PDF design-spec build via the
   workspace Pandoc stack.
+- Perf model extensions: FR-FCFS reordering and a write buffer in the LPDDR5X
+  model (currently in-order/FCFS); a UVM-driven perf mode on a licensed simulator.
