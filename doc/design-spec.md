@@ -336,6 +336,7 @@ jobs that each `needs: regress`:
 | `cocotb` | `make cocotb` | iverilog, cocotb |
 | `formal` | `make formal` | OSS CAD Suite (pinned) |
 | `synth` | `make synth` (Yosys area/timing gate; uploads the gate-level netlist) | OSS CAD Suite (pinned) |
+| `docs` | `make doc` (builds this spec as a PDF; uploads the artifact) | pandoc + LaTeX |
 
 The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
 

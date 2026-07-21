@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth perf perf-sweep perf-selftest ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth perf perf-sweep perf-selftest doc ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -51,6 +51,7 @@ help:
 	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
+	@echo "  make doc       — build the design-spec PDF (pandoc + LaTeX; skips if absent)"
 	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
@@ -316,6 +317,11 @@ synth:
 	fi; \
 	[ "$$fail" -eq 0 ] || exit 1; \
 	echo "[SYNTH] PASS: no latches; area & timing-proxy within ceilings"
+
+# doc: build the design-spec PDF (delegates to doc/; pandoc + a LaTeX engine).
+# Skips cleanly if pandoc / no LaTeX engine is present, so it never blocks a build.
+doc:
+	$(MAKE) -C doc
 
 # Comprehensive local run.
 ci: regress coverage sva formal cocotb synth

@@ -159,3 +159,26 @@ jobs:
 
       - name: Verible style-lint (advisory; .rules.verible_lint)
         run: make verible-lint
+
+  # Build the design-spec PDF (pandoc + LaTeX) and publish it as an artifact.
+  # Independent of `regress` (docs-only), so it runs in parallel and lands fast.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pandoc + LaTeX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc texlive-latex-recommended \
+            texlive-latex-extra texlive-fonts-recommended
+
+      - name: Build design-spec PDF
+        run: make doc
+
+      - name: Upload design-spec PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-spec-pdf
+          path: doc/build/design-spec.pdf
+          if-no-files-found: ignore

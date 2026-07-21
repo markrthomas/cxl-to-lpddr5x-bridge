@@ -201,6 +201,7 @@ stress), then fans out to parallel jobs that each depend on it:
 | `cocotb` | `make cocotb` | 12 cocotb tests |
 | `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite); BMC + cover + unbounded `prove` |
 | `synth` | `make synth` | Yosys synth gate: no latches, cell-count + logic-depth ceilings; uploads gate-level netlist |
+| `docs` | `make doc` | builds the design-spec PDF (pandoc + LaTeX); uploads `design-spec.pdf` artifact |
 | `verible` | `make verible-lint` | **advisory** SystemVerilog style-lint (`continue-on-error`, never gates) |
 
 The UVM bench is **not** in CI (it needs a commercial simulator license).
@@ -222,7 +223,9 @@ Reproducible-build tools are version-pinned (bump in `.github/workflows/ci.yml`)
 - **Plan**: [doc/PLAN.md](doc/PLAN.md) — current state and phased roadmap.
 - **UVM bench**: [verification/uvm/README.md](verification/uvm/README.md) — UVM env structure, how to run with Xcelium, and porting notes.
 
-Build a PDF of the spec with `make -C doc` (requires `pandoc` + a LaTeX engine).
+Build a PDF of the spec with `make doc` (pandoc + a LaTeX engine; auto-detects
+`pdflatex`/`xelatex` and skips cleanly if absent). CI builds it and publishes
+`design-spec.pdf` as an artifact.
 
 ## Status
 

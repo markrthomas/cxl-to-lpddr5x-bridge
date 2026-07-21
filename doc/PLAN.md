@@ -67,8 +67,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   correctness).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
   vlt-rand/synth/perf/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
-  regress → coverage / sva / random / cocotb / formal / synth (the `random` job
-  uploads its VCD, and `synth` its gate-level netlist, as artifacts).
+  regress → coverage / sva / random / cocotb / formal / synth / docs (the `random`
+  job uploads its VCD, `synth` its gate-level netlist, and `docs` the design-spec
+  PDF, as artifacts).
 
 ## Completed
 
@@ -100,6 +101,17 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   to systematically test FIFO_DEPTH and credit settings.
 - **[done 2026-06-01] Synthesis smoke (Yosys)**: Added `make synth` to the root
   Makefile; verified no inferred latches and captured area stats.
+- **[done 2026-07-20] PDF design-spec build**: made the pandoc PDF build robust
+  and first-class. `doc/Makefile` now auto-detects the LaTeX engine (pdflatex
+  preferred — proven clean on the spec's only non-ASCII glyphs `—`/`§` — then
+  xelatex), stamps a build date, adds a depth-2 TOC and `tango` code highlighting,
+  and **degrades to a clean skip** (exit 0) if pandoc or a LaTeX engine is absent,
+  so it never breaks a tree-wide build. Wired into the root Makefile as `make doc`
+  (help + `.PHONY`). Added a `docs` CI job (pandoc + texlive) that builds the PDF
+  and uploads `design-spec.pdf` as an artifact. The spec has no mermaid diagrams
+  (those live only in the README), so no diagram-rendering filter is needed.
+  Verified: 270 KB PDF builds with pdflatex, no missing-glyph warnings; the
+  no-engine skip path works.
 - **[done 2026-07-20] Synthesis area/timing gate**: promoted `make synth` from a
   smoke into a regression gate — Yosys generic synth (flattened) now gates on (1)
   no inferred latches (`$_DLATCH_` cells), (2) a cell-count ceiling `SYNTH_MAX_CELLS`
@@ -208,8 +220,6 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Long-term
 
-- PDF design-spec build via the workspace Pandoc stack (mermaid diagram handling,
-  unicode/table rendering; wire `make -C doc` into the root Makefile + optional CI).
 - Real STA sign-off (standard-cell `.lib` + `.sdc` constraints) and a structural
   CDC audit — beyond the liberty-free area/depth synth gate now in place.
 - Perf model extensions: FR-FCFS reordering and a write buffer in the LPDDR5X
