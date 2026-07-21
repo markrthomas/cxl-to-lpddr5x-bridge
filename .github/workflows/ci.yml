@@ -131,6 +131,9 @@ jobs:
       - name: Yosys synth area/timing gate (no latches; cell-count + logic-depth ceilings)
         run: make synth
 
+      - name: Structural CDC audit (every crossing goes through a synchronizer)
+        run: make cdc
+
       - name: Upload gate-level netlist
         uses: actions/upload-artifact@v4
         with:

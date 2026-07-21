@@ -1,0 +1,46 @@
+# Structural clock-domain-crossing (CDC) audit for cxl_lpddr5x_bridge.
+#
+# Contract: every CDC in the design must pass through a *sanctioned synchronizer
+# module* — async_fifo (Gray-pointer dual-clock FIFO, data), cdc_sync (2-flop
+# level synchronizer, control), reset_sync (reset deassertion), or
+# credit_pulse_sync (toggle pulse). We blackbox those four so they cut the
+# register-to-register path at their boundary, then assert that the remaining
+# clk / mem_clk flip-flop logic is combinationally *separable*: no clk-domain flop
+# may reach a mem_clk-domain flop's data cone (or vice versa) without passing
+# through a sanctioned synchronizer. Any such path is an unsynchronized crossing.
+#
+# Fails (non-zero exit) via select -assert-count if a violation exists. Run with
+# `make cdc`.
+
+read_verilog -sv -Isrc \
+  src/async_fifo.v src/cdc_sync.v src/credit_counter.v src/credit_pulse_sync.v \
+  src/reset_drain.v src/reset_sync.v src/cxl_lpddr5x_bridge.v
+
+# Cut the sanctioned crossers so a path *through* one terminates at its boundary.
+blackbox async_fifo cdc_sync reset_sync credit_pulse_sync
+
+hierarchy -top cxl_lpddr5x_bridge
+proc
+flatten
+opt_clean
+
+# Config sanity: the crossers must actually be present as blackboxed instances,
+# otherwise the audit would be cutting nothing and pass vacuously.
+select -assert-min 1 t:async_fifo
+select -assert-min 1 t:cdc_sync
+select -assert-min 1 t:reset_sync
+
+# Pure per-clock flop sets (clock-net consumers intersected with FF cell types).
+select -set ffs   t:$adff* t:$dff* t:$dffe* t:$sdff* t:$dlatch*
+select -set memff n:mem_clk %co @ffs %i
+select -set clkff n:clk     %co @ffs %i
+
+# A clk-domain flop inside a mem-domain flop's combinational fan-in (crossers cut)
+# is a clk->mem crossing with no synchronizer; the symmetric set catches mem->clk.
+select -set xing_c2m @memff %ci*:-async_fifo:-cdc_sync:-reset_sync:-credit_pulse_sync @clkff %i
+select -set xing_m2c @clkff %ci*:-async_fifo:-cdc_sync:-reset_sync:-credit_pulse_sync @memff %i
+
+select -assert-count 0 @xing_c2m
+select -assert-count 0 @xing_m2c
+
+log CDC-AUDIT: no unsynchronized clock-domain crossings.

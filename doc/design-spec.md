@@ -335,7 +335,7 @@ jobs that each `needs: regress`:
 | `random` | `make vlt-rand RAND_SEED=<n>` over a seed matrix `[1..4]` (per-seed VCD artifact, `if: always()`) | verilator |
 | `cocotb` | `make cocotb` | iverilog, cocotb |
 | `formal` | `make formal` | OSS CAD Suite (pinned) |
-| `synth` | `make synth` (Yosys area/timing gate; uploads the gate-level netlist) | OSS CAD Suite (pinned) |
+| `synth` | `make synth` (Yosys area/timing gate; uploads the netlist) + `make cdc` (structural CDC audit) | OSS CAD Suite (pinned) |
 | `docs` | `make doc` (builds this spec as a PDF; uploads the artifact) | pandoc + LaTeX |
 
 The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
@@ -412,6 +412,30 @@ also writes a flat gate-level netlist (`sim/synth_netlist.v`) and uploads it as 
 CI artifact. Real sign-off STA (a standard-cell library + `.sdc` constraints)
 remains future work.
 
+## 8.11 Structural CDC audit
+
+`make cdc` (`verification/cdc/cdc_audit.ys`) is a Yosys structural clock-domain-
+crossing check. The design's CDC contract is that *every* crossing goes through a
+sanctioned synchronizer module -- `async_fifo` (Gray-pointer dual-clock FIFO, for
+data), `cdc_sync` (two-flop level synchronizer, for control), `reset_sync` (reset
+deassertion), or `credit_pulse_sync` (toggle pulse). The audit enforces that
+structurally: it **blackboxes those four modules** so a path *through* one
+terminates at its boundary, flattens the rest, and then asserts that the remaining
+`clk`- and `mem_clk`-clocked flip-flop logic is combinationally **separable** --
+no `clk`-domain flop may appear in the combinational fan-in cone of a `mem_clk`
+flop, or vice versa. A flop reachable across the boundary would be a register that
+samples the other domain without a synchronizer; `select -assert-count 0` fails the
+build (non-zero exit) if any such crossing exists. A companion `-assert-min 1`
+confirms the synchronizer instances are actually present, so the audit can never
+pass vacuously by cutting nothing.
+
+The check is validated in both directions: it reports zero crossings on the design
+(all data/control/reset crossings go through the blackboxed synchronizers) and, on
+a deliberately injected `clk`-flop -> `mem_clk`-flop path, it flags exactly that
+register and fails. It runs in the `synth` CI job (same Yosys / OSS CAD Suite).
+Full path-based CDC analysis (reconvergence, glitch, and metastability-window
+checks) is the domain of commercial CDC tools and remains out of scope.
+
 # 9. Roadmap (phased milestones)
 
 The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
@@ -419,7 +443,8 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 - **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
 - **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
 - **Formal depth** -- *done*: `credit_counter` / `reset_drain` / `async_fifo` close unbounded `prove`, the CDC occupancy bound is k-inductive (ghost counters, §8.3), and the bridge BMC depth is raised to 24. Remaining: the bridge *top* unbounded `prove`, blocked only on egress valid/ready data-stability (needs FIFO head-of-line data-path integrity that survives `multiclock` + async reset + `$past`).
-- **Synthesis area/timing gate** -- *done* (§8.10): a Yosys synth gate on inferred latches, cell-count (area) and `ltp` logic-depth (timing proxy) ceilings, with a gate-level netlist artifact; runs as a CI job. Remaining: real STA (standard-cell `.lib` + `.sdc`) and a structural CDC audit.
+- **Synthesis area/timing gate** -- *done* (§8.10): a Yosys synth gate on inferred latches, cell-count (area) and `ltp` logic-depth (timing proxy) ceilings, with a gate-level netlist artifact; runs as a CI job.
+- **Structural CDC audit** -- *done* (§8.11): a Yosys blackbox-and-separability check (`make cdc`) asserting every clock-domain crossing goes through a sanctioned synchronizer; runs in the `synth` CI job. Remaining: real STA (standard-cell `.lib` + `.sdc`) and path-based CDC analysis (commercial tooling).
 - **UVM extensions** -- the base env has landed (§8.7); add a link-down/drain test, credit stress, and the parameter sweep driven from UVM.
 - **Memory model** -- *done*: an LPDDR5X bank/timing scheduler model (§8.9) closes a realistic end-to-end loop for latency + throughput characterization vs locality, credit, and FIFO-depth settings (`make perf` / `perf-sweep`). Sim-only; not in the RTL datapath.
 
@@ -443,10 +468,11 @@ verification/
   directed/                       Icarus self-checking TB + saved GTKWave layout + Makefile
   cocotb/                         cocotb tests + Python gold model
   formal/                         SymbiYosys .sby files + Makefile
+  cdc/                            cdc_audit.ys — Yosys structural CDC audit
   uvm/                            full UVM 1.2 bench (Cadence Xcelium; not in CI)
 sim/                              Verilator harnesses: sim_main.cpp (coverage / SVA), sim_rand.cpp (randomized + waveform / --assert),
                                   sim_perf.cpp + lpddr5x_timing_model.h (perf model), tb_timing_model.cpp (model self-test)
 doc/                              this spec, PLAN.md, PDF Makefile
-Makefile                          root gates: lint/sim/stress/regress/vcd/gtkwave/vlt-vcd/vlt-rand/coverage/sva/cocotb/uvm/perf/formal/ci
-.github/workflows/ci.yml          regress -> coverage / sva / random / cocotb / formal
+Makefile                          root gates: lint/sim/stress/regress/vcd/gtkwave/vlt-vcd/vlt-rand/coverage/sva/cocotb/uvm/perf/synth/cdc/doc/formal/ci
+.github/workflows/ci.yml          regress -> coverage / sva / random / cocotb / formal / synth (+cdc) / docs
 ```

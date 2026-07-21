@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth perf perf-sweep perf-selftest doc ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -46,6 +46,7 @@ help:
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make formal    — SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)"
 	@echo "  make synth     — Yosys synth + area/timing gate (latches, cell-count & logic-depth ceilings)"
+	@echo "  make cdc       — Yosys structural CDC audit (every crossing goes through a synchronizer)"
 	@echo "  make perf      — LPDDR5X bank/timing model perf run (latency + throughput);"
 	@echo "                   knobs: PERF_LOAD=90 PERF_PATTERN=rand|stream|hotbank PERF_SEED=1 PERF_CYCLES=20000"
 	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
@@ -318,17 +319,32 @@ synth:
 	[ "$$fail" -eq 0 ] || exit 1; \
 	echo "[SYNTH] PASS: no latches; area & timing-proxy within ceilings"
 
+# cdc: structural clock-domain-crossing audit (Yosys). Blackboxes the sanctioned
+# synchronizers (async_fifo / cdc_sync / reset_sync / credit_pulse_sync), then
+# asserts the remaining clk / mem_clk flop logic is combinationally separable — so
+# any crossing that bypasses a synchronizer fails the build (non-zero exit). Skips
+# cleanly if yosys is absent.
+cdc:
+	@set -e; \
+	command -v yosys >/dev/null 2>&1 || { echo "[CDC] yosys not on PATH; skipping"; exit 0; }; \
+	echo "[CDC] auditing clock-domain crossings..."; \
+	mkdir -p sim; \
+	yosys verification/cdc/cdc_audit.ys > sim/cdc.log 2>&1 || { \
+		echo "[CDC] FAIL: unsynchronized clock-domain crossing (see sim/cdc.log)"; \
+		grep -i 'Assertion failed' sim/cdc.log || true; exit 1; }; \
+	echo "[CDC] PASS: every clock-domain crossing goes through a sanctioned synchronizer"
+
 # doc: build the design-spec PDF (delegates to doc/; pandoc + a LaTeX engine).
 # Skips cleanly if pandoc / no LaTeX engine is present, so it never blocks a build.
 doc:
 	$(MAKE) -C doc
 
 # Comprehensive local run.
-ci: regress coverage sva formal cocotb synth
-	@echo "[CI] regress + coverage + sva + formal + cocotb + synth PASSED"
+ci: regress coverage sva formal cocotb synth cdc
+	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc PASSED"
 
 clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
 	-$(MAKE) -C verification/uvm clean
-	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) $(PERF_DIR) sim/coverage.info sim/synth.log sim/synth_netlist.v sim/tb_timing_model
+	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) $(PERF_DIR) sim/coverage.info sim/synth.log sim/synth_netlist.v sim/cdc.log sim/tb_timing_model

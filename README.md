@@ -42,7 +42,7 @@ graph LR
 
 ## Key Features
 
-- **Dual-Clock Domain**: Independent `clk` (CXL host) and `mem_clk` (LPDDR5X command channel); all crossings via Gray-coded async FIFOs and toggle synchronizers.
+- **Dual-Clock Domain**: Independent `clk` (CXL host) and `mem_clk` (LPDDR5X command channel); all crossings via Gray-coded async FIFOs and toggle synchronizers — structurally audited (`make cdc`) so no crossing bypasses a synchronizer.
 - **Protocol Translation**: CXL.mem `MEM_RD / MEM_WR / MEM_MRR / MEM_MRW` requests map to LPDDR5X `RD/RDA/WR/WRA/MWR/MRW/MRR` command flits; responses map back to CXL completions.
 - **Credit Flow Control**: Hardware-enforced credits per traffic class — Posted, Non-Posted, Response — derived from async-FIFO write-domain occupancy, so credit return across clock domains is inherently CDC-lossless (no toggle-pulse return path to drop).
 - **Ordering Preservation**: Posted-priority arbitration with command lock so a selected command drains before re-arbitration.
@@ -101,6 +101,7 @@ make formal      # SymbiYosys BMC + cover + unbounded prove (credit_counter, res
 make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
 make synth       # Yosys synth gate: no latches + cell-count/logic-depth ceilings; emits gate-level netlist
+make cdc         # Yosys structural CDC audit: every clock crossing must go through a synchronizer
 make perf        # LPDDR5X bank/timing model: end-to-end latency + throughput (PERF_PATTERN=rand|stream|hotbank)
 make perf-sweep  # characterize latency/throughput vs credit + FIFO-depth settings
 make perf-selftest # unit-check the timing model's arithmetic (plain g++)
@@ -200,7 +201,7 @@ stress), then fans out to parallel jobs that each depend on it:
 | `random` | `make vlt-rand RAND_SEED=<n>` | seed matrix `[1..4]`; per-seed VCD artifact |
 | `cocotb` | `make cocotb` | 12 cocotb tests |
 | `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite); BMC + cover + unbounded `prove` |
-| `synth` | `make synth` | Yosys synth gate: no latches, cell-count + logic-depth ceilings; uploads gate-level netlist |
+| `synth` | `make synth` + `make cdc` | Yosys synth gate (no latches, cell-count + logic-depth ceilings; uploads netlist) **and** structural CDC audit |
 | `docs` | `make doc` | builds the design-spec PDF (pandoc + LaTeX); uploads `design-spec.pdf` artifact |
 | `verible` | `make verible-lint` | **advisory** SystemVerilog style-lint (`continue-on-error`, never gates) |
 

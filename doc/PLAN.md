@@ -67,9 +67,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   correctness).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
   vlt-rand/synth/perf/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
-  regress → coverage / sva / random / cocotb / formal / synth / docs (the `random`
-  job uploads its VCD, `synth` its gate-level netlist, and `docs` the design-spec
-  PDF, as artifacts).
+  regress → coverage / sva / random / cocotb / formal / synth (+ a structural CDC
+  audit) / docs (the `random` job uploads its VCD, `synth` its gate-level netlist,
+  and `docs` the design-spec PDF, as artifacts).
 
 ## Completed
 
@@ -101,6 +101,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   to systematically test FIFO_DEPTH and credit settings.
 - **[done 2026-06-01] Synthesis smoke (Yosys)**: Added `make synth` to the root
   Makefile; verified no inferred latches and captured area stats.
+- **[done 2026-07-20] Structural CDC audit**: added a Yosys clock-domain-crossing
+  audit (`make cdc`, `verification/cdc/cdc_audit.ys`) enforcing the design's CDC
+  contract — every crossing goes through a sanctioned synchronizer (`async_fifo`,
+  `cdc_sync`, `reset_sync`, `credit_pulse_sync`). It blackboxes those four so a
+  path through one terminates at its boundary, flattens the rest, and asserts the
+  `clk`/`mem_clk` flop logic is combinationally separable (`select -assert-count 0`
+  on the cross-domain flop reachability, both directions), with `-assert-min 1`
+  confirming the synchronizers are present so it can't pass vacuously. Validated
+  both ways: 0 crossings on the design; a deliberately injected `clk`→`mem_clk`
+  flop path is flagged (exact register named) and fails the build. Wired into the
+  `synth` CI job (same Yosys/OSS CAD Suite) and `make ci`. Path-based CDC analysis
+  (reconvergence/glitch/metastability) stays out of scope (commercial tooling).
 - **[done 2026-07-20] PDF design-spec build**: made the pandoc PDF build robust
   and first-class. `doc/Makefile` now auto-detects the LaTeX engine (pdflatex
   preferred — proven clean on the spec's only non-ASCII glyphs `—`/`§` — then
@@ -220,7 +232,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Long-term
 
-- Real STA sign-off (standard-cell `.lib` + `.sdc` constraints) and a structural
-  CDC audit — beyond the liberty-free area/depth synth gate now in place.
+- Real STA sign-off (standard-cell `.lib` + `.sdc` constraints) and path-based CDC
+  analysis (reconvergence/glitch/metastability) — beyond the liberty-free area/depth
+  synth gate and the structural CDC audit now in place (both commercial-tool
+  territory).
 - Perf model extensions: FR-FCFS reordering and a write buffer in the LPDDR5X
   model (currently in-order/FCFS); a UVM-driven perf mode on a licensed simulator.
