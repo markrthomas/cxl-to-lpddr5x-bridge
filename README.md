@@ -100,6 +100,7 @@ make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
 make formal      # SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)
 make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 80% floor)
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
+make synth       # Yosys synth gate: no latches + cell-count/logic-depth ceilings; emits gate-level netlist
 make perf        # LPDDR5X bank/timing model: end-to-end latency + throughput (PERF_PATTERN=rand|stream|hotbank)
 make perf-sweep  # characterize latency/throughput vs credit + FIFO-depth settings
 make perf-selftest # unit-check the timing model's arithmetic (plain g++)
@@ -199,6 +200,7 @@ stress), then fans out to parallel jobs that each depend on it:
 | `random` | `make vlt-rand RAND_SEED=<n>` | seed matrix `[1..4]`; per-seed VCD artifact |
 | `cocotb` | `make cocotb` | 12 cocotb tests |
 | `formal` | `make formal` | SymbiYosys (pinned OSS CAD Suite); BMC + cover + unbounded `prove` |
+| `synth` | `make synth` | Yosys synth gate: no latches, cell-count + logic-depth ceilings; uploads gate-level netlist |
 | `verible` | `make verible-lint` | **advisory** SystemVerilog style-lint (`continue-on-error`, never gates) |
 
 The UVM bench is **not** in CI (it needs a commercial simulator license).

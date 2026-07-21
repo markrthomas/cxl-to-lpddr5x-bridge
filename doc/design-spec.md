@@ -335,6 +335,7 @@ jobs that each `needs: regress`:
 | `random` | `make vlt-rand RAND_SEED=<n>` over a seed matrix `[1..4]` (per-seed VCD artifact, `if: always()`) | verilator |
 | `cocotb` | `make cocotb` | iverilog, cocotb |
 | `formal` | `make formal` | OSS CAD Suite (pinned) |
+| `synth` | `make synth` (Yosys area/timing gate; uploads the gate-level netlist) | OSS CAD Suite (pinned) |
 
 The UVM bench (§8.7) is intentionally excluded from CI (commercial license).
 
@@ -387,6 +388,29 @@ right-sizing the buffers.
 arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes use
 tWL). None of the perf targets are CI gates.
 
+## 8.10 Synthesis gate (area / timing)
+
+`make synth` runs Yosys generic synthesis (flattened) and turns it into a
+regression gate, not just a smoke pass. It enforces three signals:
+
+- **No inferred latches** -- fails if the netlist contains any `$_DLATCH_` cells,
+  catching an unintended latch from an incomplete combinational assignment.
+- **Area ceiling** -- the mapped cell count must stay under `SYNTH_MAX_CELLS`
+  (default 7000; the design is ~5223), so an accidental logic explosion fails.
+- **Timing proxy** -- the longest topological path (`ltp` logic depth, currently
+  25) must stay under `SYNTH_MAX_DEPTH` (default 40). `ltp` measures the deepest
+  combinational path in gate levels; it is a liberty-free critical-path proxy, so
+  the gate needs no standard-cell `.lib` or STA tool (none is bundled with the OSS
+  flow). A change that lengthens the critical path fails the gate.
+
+The ceilings are set generously above the current design to tolerate yosys-version
+drift and normal iteration while catching real regressions; CI pins the OSS CAD
+Suite, so they are deterministic there, and are bumped deliberately when a feature
+legitimately grows the design (the same philosophy as the coverage floor). The job
+also writes a flat gate-level netlist (`sim/synth_netlist.v`) and uploads it as a
+CI artifact. Real sign-off STA (a standard-cell library + `.sdc` constraints)
+remains future work.
+
 # 9. Roadmap (phased milestones)
 
 The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
@@ -394,7 +418,7 @@ The full, prioritized backlog lives in [PLAN.md](PLAN.md); highlights:
 - **Constrained-random + scoreboard** -- a randomized opcode/length soak with a reference-model scoreboard (cocotb and/or UVM), plus mid-burst CRC corruption and credit-underflow negatives.
 - **Parameter sweep** -- exercise non-default `FIFO_DEPTH` and per-class credit values.
 - **Formal depth** -- *done*: `credit_counter` / `reset_drain` / `async_fifo` close unbounded `prove`, the CDC occupancy bound is k-inductive (ghost counters, §8.3), and the bridge BMC depth is raised to 24. Remaining: the bridge *top* unbounded `prove`, blocked only on egress valid/ready data-stability (needs FIFO head-of-line data-path integrity that survives `multiclock` + async reset + `$past`).
-- **Synthesis smoke + CDC audit** -- a Yosys `synth; stat` pass plus a structural check that every crossing goes through a synchronizer.
+- **Synthesis area/timing gate** -- *done* (§8.10): a Yosys synth gate on inferred latches, cell-count (area) and `ltp` logic-depth (timing proxy) ceilings, with a gate-level netlist artifact; runs as a CI job. Remaining: real STA (standard-cell `.lib` + `.sdc`) and a structural CDC audit.
 - **UVM extensions** -- the base env has landed (§8.7); add a link-down/drain test, credit stress, and the parameter sweep driven from UVM.
 - **Memory model** -- *done*: an LPDDR5X bank/timing scheduler model (§8.9) closes a realistic end-to-end loop for latency + throughput characterization vs locality, credit, and FIFO-depth settings (`make perf` / `perf-sweep`). Sim-only; not in the RTL datapath.
 

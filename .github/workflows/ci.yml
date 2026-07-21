@@ -117,6 +117,27 @@ jobs:
       - name: SymbiYosys formal (bmc + cover + unbounded prove for all four modules incl. bridge top, depth 24)
         run: make formal
 
+  synth:
+    needs: regress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
+
+      - name: Yosys synth area/timing gate (no latches; cell-count + logic-depth ceilings)
+        run: make synth
+
+      - name: Upload gate-level netlist
+        uses: actions/upload-artifact@v4
+        with:
+          name: synth-netlist
+          path: sim/synth_netlist.v
+          if-no-files-found: ignore
+
   # Advisory SystemVerilog style-lint + format check (Verible). Non-blocking:
   # the whole job is continue-on-error so style findings surface in the logs
   # without gating merges. Independent of `regress` so feedback lands fast.

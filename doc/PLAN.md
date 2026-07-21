@@ -66,9 +66,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   characterization tool, **not** a correctness gate (directed / cocotb / formal own
   correctness).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
-  vlt-rand/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
-  regress → coverage / sva / random / cocotb / formal (the `random` job uploads
-  its VCD as an artifact, `if: always()`, for debugging a failing run).
+  vlt-rand/synth/perf/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
+  regress → coverage / sva / random / cocotb / formal / synth (the `random` job
+  uploads its VCD, and `synth` its gate-level netlist, as artifacts).
 
 ## Completed
 
@@ -100,6 +100,18 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   to systematically test FIFO_DEPTH and credit settings.
 - **[done 2026-06-01] Synthesis smoke (Yosys)**: Added `make synth` to the root
   Makefile; verified no inferred latches and captured area stats.
+- **[done 2026-07-20] Synthesis area/timing gate**: promoted `make synth` from a
+  smoke into a regression gate — Yosys generic synth (flattened) now gates on (1)
+  no inferred latches (`$_DLATCH_` cells), (2) a cell-count ceiling `SYNTH_MAX_CELLS`
+  (area proxy; design ~5223, ceiling 7000), and (3) an `ltp` longest-topological-
+  path ceiling `SYNTH_MAX_DEPTH` (logic depth = liberty-free timing proxy; design
+  25, ceiling 40), so a change that balloons area or lengthens the critical path
+  fails without needing a standard-cell `.lib` / STA tool (none is bundled). Writes
+  a flat gate-level netlist (`sim/synth_netlist.v`). Added a `synth` CI job (reuses
+  the pinned OSS CAD Suite from the formal job) that runs the gate and uploads the
+  netlist artifact. Ceilings are generous (version-drift tolerant) and bumped
+  deliberately, like the coverage floor. Verified: PASS at 5223 cells / depth 25;
+  both ceilings demonstrably fail the build when breached.
 - **[done 2026-06-01] Invariant assertions**: Added top-level and FIFO-level
   assertions for overflow/underflow and credit pool conservation.
 - **[done 2026-06-01] Error/event counters**: Implemented `crc_err_cnt`,
@@ -196,7 +208,9 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
 ## Long-term
 
-- Synthesis + timing hooks beyond the smoke above; PDF design-spec build via the
-  workspace Pandoc stack.
+- PDF design-spec build via the workspace Pandoc stack (mermaid diagram handling,
+  unicode/table rendering; wire `make -C doc` into the root Makefile + optional CI).
+- Real STA sign-off (standard-cell `.lib` + `.sdc` constraints) and a structural
+  CDC audit — beyond the liberty-free area/depth synth gate now in place.
 - Perf model extensions: FR-FCFS reordering and a write buffer in the LPDDR5X
   model (currently in-order/FCFS); a UVM-driven perf mode on a licensed simulator.

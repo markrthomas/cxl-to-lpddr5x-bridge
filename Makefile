@@ -45,7 +45,7 @@ help:
 	@echo "  make coverage  — Verilator C++ coverage -> sim/coverage.info (fails below COV_MIN=$(COV_MIN)% lines)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
 	@echo "  make formal    — SymbiYosys BMC + cover + unbounded prove (credit_counter, reset_drain, async_fifo, and bridge top; depth 24)"
-	@echo "  make synth     — Yosys synthesis smoke (catch latches, area stats)"
+	@echo "  make synth     — Yosys synth + area/timing gate (latches, cell-count & logic-depth ceilings)"
 	@echo "  make perf      — LPDDR5X bank/timing model perf run (latency + throughput);"
 	@echo "                   knobs: PERF_LOAD=90 PERF_PATTERN=rand|stream|hotbank PERF_SEED=1 PERF_CYCLES=20000"
 	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
@@ -278,19 +278,44 @@ perf-selftest:
 formal:
 	$(MAKE) -C verification/formal
 
-# synth: Yosys synthesis smoke test. Checks for inferred latches / priority logic
-# and tracks area/cell count as a regression signal. Requires yosys on PATH.
+# synth: Yosys synthesis + area/timing regression gate (beyond the earlier smoke).
+# Maps the RTL to a generic gate library (flattened), then gates on three signals:
+#   1. no inferred latches ($_DLATCH_ cells) — a structural correctness check;
+#   2. cell count <= SYNTH_MAX_CELLS — an area regression ceiling;
+#   3. longest topological path (ltp logic depth) <= SYNTH_MAX_DEPTH — a
+#      liberty-free timing proxy (critical combinational depth), so a change that
+#      lengthens the critical path fails without needing a real STA tool / .lib.
+# Emits a flat gate-level netlist artifact (sim/synth_netlist.v). The ceilings are
+# set generously above the current design (5223 cells / depth 25) to tolerate
+# yosys-version drift and normal iteration while catching real ballooning; CI pins
+# the OSS CAD Suite, so they are deterministic there. Bump them deliberately when a
+# feature legitimately grows the design. Requires yosys on PATH.
+SYNTH_MAX_CELLS ?= 7000
+SYNTH_MAX_DEPTH ?= 40
 synth:
 	@set -e; \
 	command -v yosys >/dev/null 2>&1 || { echo "[SYNTH] yosys not on PATH; skipping"; exit 0; }; \
-	echo "[SYNTH] starting Yosys smoke synthesis..."; \
+	echo "[SYNTH] synthesizing (generic gate map, flattened)..."; \
 	mkdir -p sim; \
-	yosys -p "read_verilog -sv -Isrc $(BRIDGE_SRCS); synth -top cxl_lpddr5x_bridge; stat" > sim/synth.log 2>&1; \
-	grep -E "(wires|cells|memories|processes)$$" sim/synth.log; \
-	if grep -i "Latch inferred" sim/synth.log | grep -v "No latch inferred" > /dev/null; then \
-		echo "[SYNTH] FAIL: inferred latches detected!"; exit 1; \
+	yosys -p "read_verilog -sv -Isrc $(BRIDGE_SRCS); \
+		synth -top cxl_lpddr5x_bridge -flatten; \
+		stat; ltp -noff; write_verilog sim/synth_netlist.v" > sim/synth.log 2>&1; \
+	if grep -qE '\$$_DLATCH' sim/synth.log; then \
+		echo "[SYNTH] FAIL: inferred latch ($$_DLATCH_) cells detected!"; exit 1; \
 	fi; \
-	echo "[SYNTH] PASS: no latches, stat written to sim/synth.log"
+	cells=$$(grep -oE '[0-9]+ cells$$' sim/synth.log | tail -1 | grep -oE '[0-9]+'); \
+	depth=$$(grep -oE 'length=[0-9]+' sim/synth.log | tail -1 | grep -oE '[0-9]+'); \
+	echo "[SYNTH] cells=$${cells:-?}  logic-depth(ltp)=$${depth:-?}  ceilings: cells<=$(SYNTH_MAX_CELLS) depth<=$(SYNTH_MAX_DEPTH)"; \
+	echo "[SYNTH] gate-level netlist: sim/synth_netlist.v  (full stat/ltp: sim/synth.log)"; \
+	fail=0; \
+	if [ -n "$$cells" ] && [ "$$cells" -gt "$(SYNTH_MAX_CELLS)" ]; then \
+		echo "[SYNTH] FAIL: cell count $$cells exceeds ceiling $(SYNTH_MAX_CELLS)"; fail=1; \
+	fi; \
+	if [ -n "$$depth" ] && [ "$$depth" -gt "$(SYNTH_MAX_DEPTH)" ]; then \
+		echo "[SYNTH] FAIL: logic depth $$depth exceeds ceiling $(SYNTH_MAX_DEPTH)"; fail=1; \
+	fi; \
+	[ "$$fail" -eq 0 ] || exit 1; \
+	echo "[SYNTH] PASS: no latches; area & timing-proxy within ceilings"
 
 # Comprehensive local run.
 ci: regress coverage sva formal cocotb synth
@@ -300,4 +325,4 @@ clean:
 	$(MAKE) -C verification/directed clean
 	-$(MAKE) -C verification/formal clean
 	-$(MAKE) -C verification/uvm clean
-	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) sim/coverage.info sim/synth.log
+	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) $(PERF_DIR) sim/coverage.info sim/synth.log sim/synth_netlist.v sim/tb_timing_model
