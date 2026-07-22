@@ -49,6 +49,7 @@ help:
 	@echo "  make cdc       — Yosys structural CDC audit (every crossing goes through a synchronizer)"
 	@echo "  make perf      — LPDDR5X bank/timing model perf run (latency + throughput);"
 	@echo "                   knobs: PERF_LOAD=90 PERF_PATTERN=rand|stream|hotbank PERF_SEED=1 PERF_CYCLES=20000"
+	@echo "                   PERF_SCHED=fcfs|frfcfs PERF_WBUF=1 PERF_WINDOW=16 (scheduler policy)"
 	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
@@ -240,6 +241,9 @@ PERF_CYCLES  ?=
 PERF_LOAD    ?=
 PERF_BP      ?=
 PERF_PATTERN ?=
+PERF_SCHED   ?=
+PERF_WBUF    ?=
+PERF_WINDOW  ?=
 perf:
 	@set -e; \
 	command -v $(VERILATOR) >/dev/null 2>&1 || { echo "[PERF] verilator not on PATH; skipping"; exit 0; }; \
@@ -261,7 +265,10 @@ perf:
 		$(if $(PERF_CYCLES),+cycles=$(PERF_CYCLES)) \
 		$(if $(PERF_LOAD),+load=$(PERF_LOAD)) \
 		$(if $(PERF_BP),+bp=$(PERF_BP)) \
-		$(if $(PERF_PATTERN),+pattern=$(PERF_PATTERN)) )
+		$(if $(PERF_PATTERN),+pattern=$(PERF_PATTERN)) \
+		$(if $(PERF_SCHED),+sched=$(PERF_SCHED)) \
+		$(if $(PERF_WBUF),+wbuf=$(PERF_WBUF)) \
+		$(if $(PERF_WINDOW),+window=$(PERF_WINDOW)) )
 
 # perf-sweep: characterize latency/throughput across credit + FIFO-depth settings
 # (re-elaborates the DUT per point via PERF_PARAMS). See sim/perf_sweep.sh.

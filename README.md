@@ -102,7 +102,7 @@ make coverage    # Verilator --coverage -> sim/coverage.info (100%; fails below 
 make sva         # Verilator --assert: interface SVA on all 4 valid/ready ports
 make synth       # Yosys synth gate: no latches + cell-count/logic-depth ceilings; emits gate-level netlist
 make cdc         # Yosys structural CDC audit: every clock crossing must go through a synchronizer
-make perf        # LPDDR5X bank/timing model: end-to-end latency + throughput (PERF_PATTERN=rand|stream|hotbank)
+make perf        # LPDDR5X bank/timing model: end-to-end latency + throughput (PERF_PATTERN=rand|stream|hotbank|mixed, PERF_SCHED=fcfs|frfcfs)
 make perf-sweep  # characterize latency/throughput vs credit + FIFO-depth settings
 make perf-selftest # unit-check the timing model's arithmetic (plain g++)
 make verible-lint   # Verible SystemVerilog style-lint (advisory; .rules.verible_lint)
@@ -152,16 +152,25 @@ banks in 4 bank groups (row hit / miss / empty; tRCD, tRP, tRAS, tRC, tCCD_L/S,
 tRRD_L/S, tFAW, tRL/tWL, tWR, tRTP) and a **finite controller command queue** that
 backpressures `lp_out_ready`, so an offered load above the memory's sustainable
 rate backs up through the bridge credits instead of producing an unbounded
-schedule. It is an in-order (FCFS) *characterization* model, not a sign-off
-memory model, and scores no functional correctness (directed / cocotb / formal
-own that).
+schedule. It is a *characterization* model, not a sign-off memory model, and
+scores no functional correctness (directed / cocotb / formal own that).
+
+By default it schedules **in-order (FCFS)**. An opt-in queued scheduler
+(`PERF_SCHED=frfcfs`) adds **FR-FCFS** row-hit reordering — a younger column
+command to an already-open row is promoted ahead of older commands that would pay
+an activate/precharge — and, with `PERF_WBUF=1`, a **read-priority write buffer**
+that drains writes in bursts so reads jump the queue. FCFS and FR-FCFS share one
+identical command-queue/backpressure model, so the policy A/B isolates the pure
+reordering effect.
 
 ```bash
 make perf PERF_PATTERN=stream           # high locality + bank parallelism
 make perf PERF_PATTERN=rand             # mostly row-miss, spread across banks
 make perf PERF_PATTERN=hotbank          # few banks -> bank-cycle contention
+make perf PERF_PATTERN=mixed            # hits + misses interleaved (reorder-friendly)
+make perf PERF_PATTERN=mixed PERF_SCHED=frfcfs PERF_WBUF=1   # FR-FCFS + write buffer
 make perf PERF_LOAD=60 PERF_SEED=3      # offered load / seed knobs
-make perf-sweep                         # tabulate the latency/throughput knee
+make perf-sweep                         # latency/throughput knee + scheduler A/B
 ```
 
 `make perf` prints the row hit/miss mix, command/completion throughput, and
@@ -169,24 +178,34 @@ end-to-end latency percentiles (min/mean/p50/p95/p99/max, host clk cycles).
 Address locality dominates: `stream` (bank-interleaved, high row-hit rate)
 sustains roughly **2× the throughput and the lowest latency**, while `hotbank`
 (constant row conflicts on a few banks) is the worst. `make perf-sweep`
-re-elaborates the DUT across credit + FIFO-depth points: throughput is
-**memory-bound** — flat across the credit range, set by locality — while
-end-to-end latency grows steadily, so credits beyond the small pool needed to
-cover the round-trip are pure latency cost (Little's law):
+re-elaborates the DUT across credit + FIFO-depth points and A/Bs the scheduler at
+each: throughput is **memory-bound** — flat across the credit range, set by
+locality — while end-to-end latency grows steadily, so credits beyond the small
+pool needed to cover the round-trip are pure latency cost (Little's law):
 
 ```
-pattern    cred     hit%  cmd/cyc   cpl/cyc  e2e_mean   e2e_p95   e2e_p99
-stream        4     62.0    0.198     0.140     187.7       251       285
-stream        8     61.9    0.157     0.111     235.6       390       479
-stream       16     60.0    0.153     0.108     310.9       566       639
-stream       32     56.6    0.148     0.104     464.1       930      1062
-rand          8      0.0    0.074     0.052     329.1       622       716
-hotbank       8      9.6    0.045     0.032     441.0       827       935
+pattern    cred sched        hit%  cmd/cyc  cpl/cyc  e2e_mean   e2e_p95   reord
+stream        8 fcfs         61.9    0.161    0.112     443.7       632       0
+rand          8 fcfs          0.0    0.078    0.053     760.5      1049       0
+rand          8 frfcfs        0.0    0.078    0.053     760.5      1049       0
+hotbank       8 fcfs          9.1    0.049    0.033    1124.9      1501       0
+hotbank       8 frfcfs       26.8    0.059    0.039     963.5      1381     129
+mixed         8 fcfs         47.4    0.125    0.087     528.1       748       0
+mixed         8 frfcfs       47.8    0.133    0.092     505.2       775     538
+mixed         8 frfcfs-wb    47.7    0.140    0.097     487.4       796     530
 ```
 
-`make perf-selftest` is a deterministic g++ unit test that pins the model's
-timing arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes
-use tWL, mode-register access = tMRR).
+On the reorder-friendly patterns FR-FCFS earns its keep: on `mixed` it raises
+command throughput and lowers mean latency at a modestly worse tail (the classic
+DRAM-controller trade-off), and on `hotbank` it nearly triples the row-hit rate
+(9%→27%) by finding the scarce hits among the contended banks; the write buffer
+adds a further throughput bump. On 0%-hit `rand`, FCFS and FR-FCFS are byte-for-byte
+identical (nothing to promote) — so the A/B is honest, not a stacked deck.
+
+`make perf-selftest` is a deterministic g++ unit test that pins the model's timing
+arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes use tWL,
+mode-register access = tMRR) and the scheduler behavior (row-hit promotion under
+FR-FCFS but not FCFS; the write buffer's read-priority and drain hysteresis).
 
 ## Continuous Integration
 

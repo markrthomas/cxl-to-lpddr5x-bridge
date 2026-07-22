@@ -371,23 +371,50 @@ controller command queue** backpressures `lp_out_ready` when the model's schedul
 horizon runs a queue-depth ahead of the current cycle, so an offered load above
 the memory's sustainable rate backs up through the bridge's credits rather than
 producing an unbounded schedule -- latency-under-load then follows Little's law
-from the queue depth, as on real hardware. The model is **in-order (FCFS)**: no
-FR-FCFS reordering or write buffering (a documented simplification, not a sign-off
-memory model).
+from the queue depth, as on real hardware.
+
+**Scheduling policy.** By default the model is **in-order (FCFS)** -- commands are
+scheduled in the order the bridge presents them, which mirrors the bridge's own
+per-class ordering. `set_policy()` switches it onto a **queued scheduler** with two
+selectable policies that share one identical command-queue / backpressure model
+(so a policy A/B is apples-to-apples and differs *only* in which queued command
+issues next):
+
+- **FR-FCFS** (*first-ready, first-come-first-served*): within a bounded lookahead
+  window, a column command to an already-open row (a **row hit**) is promoted ahead
+  of older commands that would pay an activate/precharge. This is the classic
+  DRAM-controller throughput win -- more column commands per activate. An optional
+  anti-starvation cap forces the queue head once it has waited too long.
+- **Read-priority write buffer** (on top of FR-FCFS): writes are held and drained in
+  bursts under a watermark hysteresis (enter drain at `wr_hi`, leave at `wr_lo`), so
+  reads jump the queue and see lower latency at the cost of burstier write
+  turnaround -- again as on real controllers.
+
+The reordering rides on exactly the same bus/bank timing arithmetic as the FCFS
+path (it only changes *order*), so it is never faster than physics allows. On a
+mixed hit/miss stream presented out of order, FR-FCFS trades a modestly worse
+latency tail for higher command throughput and lower mean latency; on a 0%-hit
+random stream it is identical to FCFS (nothing to promote). None of this is in the
+RTL datapath -- it is a sim-only characterization capability.
 
 `make perf` reports the row hit/miss mix, command/completion throughput, and
-end-to-end latency percentiles for a chosen offered load (`PERF_LOAD`), seed, and
-address-locality pattern (`PERF_PATTERN` = `rand` / `stream` / `hotbank`).
-Locality dominates the result: `stream` (bank-interleaved, high row-hit rate)
-sustains ~2x the throughput at the lowest latency; `hotbank` (constant conflicts
-on a few banks) is worst. `make perf-sweep` re-elaborates the DUT across credit +
-FIFO-depth points: throughput is memory-bound (flat across the credit range, set
-by locality) while end-to-end latency grows steadily, so credits beyond the small
-pool needed to cover the round-trip are pure latency cost -- a useful signal for
-right-sizing the buffers.
-`make perf-selftest` is a deterministic g++ unit test that pins the model's timing
-arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes use
-tWL). None of the perf targets are CI gates.
+end-to-end latency percentiles for a chosen offered load (`PERF_LOAD`), seed,
+address-locality pattern (`PERF_PATTERN` = `rand` / `stream` / `hotbank` / `mixed`),
+and scheduler policy (`PERF_SCHED` = `fcfs` / `frfcfs`, `PERF_WBUF=1` for the write
+buffer). Locality dominates the result: `stream` (bank-interleaved, high row-hit
+rate) sustains ~2x the throughput at the lowest latency; `hotbank` (constant
+conflicts on a few banks) is worst; `mixed` (hits and misses interleaved out of
+order) is the pattern the reorder scheduler exploits. `make perf-sweep`
+re-elaborates the DUT across credit + FIFO-depth points and A/Bs the scheduler at
+each: throughput is memory-bound (flat across the credit range, set by locality)
+while end-to-end latency grows steadily, so credits beyond the small pool needed to
+cover the round-trip are pure latency cost -- a useful signal for right-sizing the
+buffers.
+`make perf-selftest` is a deterministic g++ unit test that pins both the timing
+arithmetic (row-hit latency = tRL + tBURST, a miss adds tRP + tRCD, writes use tWL)
+and the scheduler behavior (a younger row-hit is promoted past an older miss under
+FR-FCFS but not under FCFS; the write buffer defers an older write behind a younger
+read and its drain hysteresis fires). None of the perf targets are CI gates.
 
 ## 8.10 Synthesis gate (area / timing)
 

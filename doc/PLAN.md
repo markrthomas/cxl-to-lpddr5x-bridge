@@ -5,7 +5,7 @@ interface, with credit-based flow control, async-FIFO clock-domain crossing, and
 per-message CRC validation. Verified with an OSS-only toolchain (Icarus +
 Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 
-## Current state (2026-07-20)
+## Current state (2026-07-22)
 
 - **RTL** (`src/`): `cxl_lpddr5x_bridge` top + `async_fifo`, `cdc_sync`,
   `reset_sync`, `reset_drain`, `credit_counter`, `credit_pulse_sync`, and a
@@ -60,11 +60,14 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   responses after a bank-state-derived latency, closing a realistic end-to-end
   loop. `make perf` reports end-to-end latency (min/mean/p50/p95/p99/max), the row
   hit/miss mix, and command/completion throughput for a chosen offered load and
-  address-locality pattern (`rand`/`stream`/`hotbank`); `make perf-sweep` tabulates
-  the latency/throughput knee across credit + FIFO-depth settings; `make
-  perf-selftest` unit-checks the model's timing arithmetic (plain g++). It is a
-  characterization tool, **not** a correctness gate (directed / cocotb / formal own
-  correctness).
+  address-locality pattern (`rand`/`stream`/`hotbank`/`mixed`). An opt-in queued
+  scheduler adds **FR-FCFS** row-hit reordering and a **read-priority write buffer**
+  (`PERF_SCHED=fcfs|frfcfs`, `PERF_WBUF=1`), sharing one queue/backpressure model
+  with FCFS so the A/B isolates the reordering effect; `make perf-sweep` tabulates
+  the latency/throughput knee across credit + FIFO-depth settings and A/Bs the
+  scheduler at each; `make perf-selftest` unit-checks the timing arithmetic and the
+  scheduler behavior (plain g++). It is a characterization tool, **not** a
+  correctness gate (directed / cocotb / formal own correctness).
 - **Gates**: root `Makefile` exposes `lint/sim/regress/stress/coverage/sva/
   vlt-rand/synth/perf/formal/cocotb/ci/clean`; `.github/workflows/ci.yml` runs
   regress → coverage / sva / random / cocotb / formal / synth (+ a structural CDC
@@ -203,6 +206,24 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   model or a correctness gate. Validated: stream (locality + bank parallelism)
   delivers ~2x the throughput and lowest latency of rand; hotbank (bank conflicts)
   is worst; self-test passes.
+- **[done 2026-07-22] FR-FCFS reordering + read-priority write buffer**: extended
+  the LPDDR5X model with an opt-in queued scheduler (`set_policy()`). **FR-FCFS**
+  promotes a younger column command to an already-open row ahead of older commands
+  that would pay an activate/precharge, within a bounded lookahead window and with
+  an optional anti-starvation cap; a **read-priority write buffer** holds writes and
+  drains them in bursts under a watermark hysteresis (`wr_hi`/`wr_lo`) so reads jump
+  the queue. FCFS and FR-FCFS share one identical command-queue/backpressure model,
+  so `PERF_SCHED=fcfs` vs `frfcfs` (`PERF_WBUF=1` for the buffer) is an
+  apples-to-apples A/B that isolates the pure reordering effect; the default
+  immediate-FCFS fast path (plain `make perf`, no `PERF_SCHED`) is byte-identical to
+  before. Added a `mixed` locality pattern (row-hits and misses interleaved out of
+  order) that the reorder scheduler exploits, wired the knobs through `make perf` and
+  the `perf-sweep` A/B table, and added deterministic self-test cases (a younger hit
+  is promoted past an older miss under FR-FCFS but not FCFS; the write buffer defers
+  an older write behind a younger read; drain hysteresis fires). Validated end-to-end
+  on `mixed`: FR-FCFS reorders ~350–540 commands for higher command throughput and
+  lower mean latency at a modestly worse tail; on 0%-hit `rand` it is identical to
+  FCFS (nothing to promote), confirming the A/B is honest. Still sim-only; not a gate.
 - **[done 2026-06-02] Verible style-lint + CI hygiene**: added a Google Verible
   SystemVerilog style-lint as a non-blocking (`continue-on-error`) CI job and a
   `make verible-lint` target, driven by a tuned `.rules.verible_lint` baseline
@@ -236,5 +257,6 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
   analysis (reconvergence/glitch/metastability) — beyond the liberty-free area/depth
   synth gate and the structural CDC audit now in place (both commercial-tool
   territory).
-- Perf model extensions: FR-FCFS reordering and a write buffer in the LPDDR5X
-  model (currently in-order/FCFS); a UVM-driven perf mode on a licensed simulator.
+- Perf model extensions: FR-FCFS reordering and a read-priority write buffer have
+  landed (see Completed, 2026-07-22). Remaining: a UVM-driven perf mode on a
+  licensed simulator (xrun-only).

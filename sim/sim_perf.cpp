@@ -80,12 +80,32 @@ static uint32_t rnd(uint32_t n) { return n ? xs32() % n : 0; }
 // Controls the row-hit rate the memory model sees, which dominates latency and
 // throughput. rand = mostly conflicts; stream = long same-row runs (high hit
 // rate); hotbank = few banks/rows (bank-cycle contention).
-enum { PAT_RAND = 0, PAT_STREAM = 1, PAT_HOTBANK = 2 };
+enum { PAT_RAND = 0, PAT_STREAM = 1, PAT_HOTBANK = 2, PAT_MIXED = 3 };
 struct AddrGen {
     int pattern = PAT_RAND;
     uint32_t seq = 0;
     void next(uint8_t& b, uint16_t& r, uint8_t& c) {
         switch (pattern) {
+            case PAT_MIXED: {
+                // Interleave ready row-HITS with blocking row-MISSES *out of
+                // order*, which is exactly what a reordering scheduler exploits.
+                // 70%: a "hot" access to banks 0..7, each pinned to its own home
+                // row (revisits are hits); 30%: a "cold" access to banks 8..15
+                // with a random far row (a miss that would stall a following hit
+                // under strict in-order issue). The two bank sets are disjoint so
+                // cold misses never disturb the hot banks' open rows.
+                uint32_t s = seq++;
+                if ((s % 10) < 3) {                       // cold: miss / bank cycling
+                    b = (uint8_t)(8 + rnd(8));
+                    r = (uint16_t)rnd(4096);
+                    c = (uint8_t)(1 + rnd(15));
+                } else {                                  // hot: home-row hit
+                    b = (uint8_t)(s & 0x7);
+                    r = (uint16_t)(0x100 + b);            // stable per-bank home row
+                    c = (uint8_t)(1 + ((s >> 3) & 0xF));
+                }
+                break;
+            }
             case PAT_STREAM:
                 // Bank-interleaved sweep: consecutive accesses hit different banks
                 // (bank-level parallelism, tCCD_S column spacing) while the row
@@ -150,25 +170,54 @@ int main(int argc, char** argv) {
     int load = 90;                   // offered-load percent on cxl_in
     int bp = 0;                      // host egress backpressure percent on cxl_out
     int pattern = PAT_RAND;
+    int sched = 0;                   // 0 = FCFS, 1 = FR-FCFS
+    bool sched_given = false;        // did the caller select a policy explicitly?
+    int wbuf = 0;                    // read-priority write buffer (FR-FCFS only)
+    int window = 16;                 // FR-FCFS reorder lookahead window
+    int starve = 0;                  // FR-FCFS anti-starvation cap (0 = off)
     for (int i = 1; i < argc; ++i) {
         if (!strncmp(argv[i], "+seed=", 6))        seed = (uint32_t)strtoul(argv[i] + 6, nullptr, 0);
         else if (!strncmp(argv[i], "+cycles=", 8)) cycles = strtoull(argv[i] + 8, nullptr, 0);
         else if (!strncmp(argv[i], "+load=", 6))   load = (int)strtol(argv[i] + 6, nullptr, 0);
         else if (!strncmp(argv[i], "+bp=", 4))     bp = (int)strtol(argv[i] + 4, nullptr, 0);
+        else if (!strncmp(argv[i], "+window=", 8)) window = (int)strtol(argv[i] + 8, nullptr, 0);
+        else if (!strncmp(argv[i], "+starve=", 8)) starve = (int)strtol(argv[i] + 8, nullptr, 0);
+        else if (!strncmp(argv[i], "+wbuf=", 6))   wbuf = (int)strtol(argv[i] + 6, nullptr, 0);
+        else if (!strncmp(argv[i], "+sched=", 7)) {
+            const char* p = argv[i] + 7;
+            sched = (!strcmp(p, "frfcfs") || !strcmp(p, "fr-fcfs")) ? 1 : 0;
+            sched_given = true;
+        }
         else if (!strncmp(argv[i], "+pattern=", 9)) {
             const char* p = argv[i] + 9;
             pattern = !strcmp(p, "stream") ? PAT_STREAM :
-                      !strcmp(p, "hotbank") ? PAT_HOTBANK : PAT_RAND;
+                      !strcmp(p, "hotbank") ? PAT_HOTBANK :
+                      !strcmp(p, "mixed") ? PAT_MIXED : PAT_RAND;
         }
     }
     rng_state = seed ? seed : 1;
     const char* pat_name = pattern == PAT_STREAM ? "stream" :
-                           pattern == PAT_HOTBANK ? "hotbank" : "rand";
-    printf("[perf] seed=%u cycles=%llu load=%d%% bp=%d%% pattern=%s\n",
-           seed, (unsigned long long)cycles, load, bp, pat_name);
+                           pattern == PAT_HOTBANK ? "hotbank" :
+                           pattern == PAT_MIXED ? "mixed" : "rand";
+    // "fcfs" with no explicit +sched uses the model's default immediate path;
+    // an explicit +sched=fcfs uses the queued scheduler with FCFS selection, so
+    // it shares the identical queue/backpressure model as +sched=frfcfs (fair A/B).
+    const char* sched_name = !sched_given ? "fcfs" :
+                             sched ? (wbuf ? "frfcfs+wb" : "frfcfs") : "fcfs(q)";
+    printf("[perf] seed=%u cycles=%llu load=%d%% bp=%d%% pattern=%s sched=%s\n",
+           seed, (unsigned long long)cycles, load, bp, pat_name, sched_name);
 
     Vcxl_lpddr5x_bridge* dut = new Vcxl_lpddr5x_bridge;
     Lpddr5xTimingModel dram;
+    if (sched_given) {
+        Lpddr5xTimingModel::Policy pol;
+        pol.sched = sched ? Lpddr5xTimingModel::SCHED_FRFCFS
+                          : Lpddr5xTimingModel::SCHED_FCFS;
+        pol.reorder_window = window > 0 ? window : 1;
+        pol.starve_cap = starve;
+        pol.write_buffer = wbuf != 0;
+        dram.set_policy(pol);
+    }
     AddrGen ag; ag.pattern = pattern;
 
     dut->rst_n = 0; dut->clk = 0; dut->mem_clk = 0;
@@ -260,6 +309,7 @@ int main(int argc, char** argv) {
 
         if (mem_rise) {
             ++mem_cyc;
+            dram.tick(mem_cyc);   // advance the (FR-FCFS) scheduler even if lp_in stalls
             // Command egress (mem domain). lp_out_ready in effect for this edge was
             // set on the previous mem cycle (below), so the handshake is consistent
             // with what the bridge sampled.
@@ -327,7 +377,8 @@ int main(int argc, char** argv) {
     long mem_span = (mem_active_start < 0) ? 1 : (mem_active_end - mem_active_start + 1);
 
     printf("\n==================== cxl_lpddr5x_bridge perf ====================\n");
-    printf("config        : seed=%u load=%d%% bp=%d%% pattern=%s\n", seed, load, bp, pat_name);
+    printf("config        : seed=%u load=%d%% bp=%d%% pattern=%s sched=%s\n",
+           seed, load, bp, pat_name, sched_name);
     printf("cycles        : %ld clk / %ld mem_clk\n", clk_cyc, mem_cyc);
     printf("--- traffic -----------------------------------------------------\n");
     printf("c2m offered   : %ld\n", c2m_offered);
@@ -337,8 +388,12 @@ int main(int argc, char** argv) {
     printf("--- DRAM model (bank/timing) ------------------------------------\n");
     printf("commands      : %ld  (row hit %.1f%% / miss %ld / empty %ld)\n",
            ms.n_cmd, hit_rate, ms.n_miss, ms.n_empty);
-    printf("mem residency : mean %.1f  max %ld  (mem_clk cycles, enqueue->ready incl. queueing)\n",
+    printf("mem residency : mean %.1f  max %ld  (mem_clk cycles, service->ready)\n",
            svc_mean, ms.max_service);
+    if (sched_given) {
+        printf("scheduler     : %s  reorders %ld  write-drains %ld  peak-queue %ld\n",
+               sched_name, ms.n_reorder, ms.n_wr_drain, ms.max_queue);
+    }
     printf("--- throughput --------------------------------------------------\n");
     printf("lp_out cmds   : %ld beats / %ld mem_clk = %.3f cmd/mem_cyc\n",
            lp_out_beats, mem_span, (double)lp_out_beats / mem_span);
@@ -353,12 +408,12 @@ int main(int argc, char** argv) {
     }
     printf("=================================================================\n");
     // Machine-readable one-liner for the sweep to parse.
-    printf("[perf-csv] pattern=%s load=%d bp=%d completions=%ld hit_pct=%.1f "
+    printf("[perf-csv] pattern=%s sched=%s load=%d bp=%d completions=%ld hit_pct=%.1f "
            "svc_mean=%.1f lp_out_tput=%.3f cxl_out_tput=%.3f e2e_mean=%.1f "
-           "e2e_p95=%ld e2e_p99=%ld e2e_max=%ld\n",
-           pat_name, load, bp, (long)e2e.size(), hit_rate, svc_mean,
+           "e2e_p95=%ld e2e_p99=%ld e2e_max=%ld reorders=%ld\n",
+           pat_name, sched_name, load, bp, (long)e2e.size(), hit_rate, svc_mean,
            (double)lp_out_beats / mem_span, (double)cxl_out_beats / clk_span,
-           e2e_mean, pctl(0.95), pctl(0.99), e2e_max);
+           e2e_mean, pctl(0.95), pctl(0.99), e2e_max, ms.n_reorder);
 
     delete dut;
     return 0;
