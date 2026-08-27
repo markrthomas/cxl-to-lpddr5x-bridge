@@ -29,7 +29,7 @@ class cxl_lpddr5x_base_test extends uvm_test;
   // Derived tests override to drive extra control activity in parallel with
   // traffic (e.g. err_inj windows). Must return when traffic-independent.
   virtual task drive_controls();
-  endfunction
+  endtask
 
   function void build_phase(uvm_phase phase);
     super.build_phase(phase);
