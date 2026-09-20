@@ -87,9 +87,13 @@ The top-level packet model is a fixed 64-bit simulation format shared in both di
 
 ## Quick Start
 
-All standard gates are exposed from the repo root (`make help` lists them):
+All standard gates are exposed from the repo root (`make help` lists them);
+target names follow the cross-repo convention in
+[`DV_STANDARDS.md`](DV_STANDARDS.md):
 
 ```bash
+make check       # lint + sim (light local gate; run on every save)
+make test        # alias for cocotb (DV_STANDARDS.md cross-repo name)
 make regress     # Verilator lint + Icarus directed simulation (fast gate)
 make stress      # directed sim with heavy backpressure
 make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd

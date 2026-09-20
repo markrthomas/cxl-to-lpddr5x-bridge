@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -33,6 +33,8 @@ help:
 	@echo "  make verible-lint   — Verible SystemVerilog style-lint (advisory; .rules.verible_lint)"
 	@echo "  make verible-format — Verible auto-format the RTL in place (opt-in, local; reflows hand-alignment)"
 	@echo "  make sim       — Icarus directed simulation (default + smoke)"
+	@echo "  make check     — lint + sim (light local gate; DV_STANDARDS.md)"
+	@echo "  make test      — alias for cocotb (DV_STANDARDS.md cross-repo name)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make vcd       — Icarus sim dumping a VCD (verification/directed/build/waves.vcd)"
 	@echo "  make gtkwave   — make vcd, then open the VCD in GTKWave with a saved signal layout"
@@ -102,6 +104,11 @@ vcd:
 gtkwave:
 	$(MAKE) -C verification/directed gtkwave
 
+# check: light local gate (DV_STANDARDS.md) — lint + directed sim, fast enough
+# to run on every save.
+check: lint sim
+	@echo "[CHECK] lint + directed sim PASSED"
+
 # fast CI gate.
 regress: lint sim
 	@echo "[REGRESS] lint + directed sim PASSED"
@@ -109,6 +116,9 @@ regress: lint sim
 # cocotb OSS UVM-equivalent tests (Icarus VPI).
 cocotb:
 	$(MAKE) -C verification/cocotb
+
+# test: cross-repo alias for the cocotb functional DV tier (DV_STANDARDS.md).
+test: cocotb
 
 # Full UVM testbench (Cadence Xcelium). Commercial-simulator bench, deliberately
 # kept out of the OSS CI gate; runs the smoke test by default and degrades to a
