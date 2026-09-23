@@ -97,7 +97,9 @@ make test        # alias for cocotb (DV_STANDARDS.md cross-repo name)
 make regress     # Verilator lint + Icarus directed simulation (fast gate)
 make stress      # directed sim with heavy backpressure
 make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd
-make gtkwave     # make vcd, then open it in GTKWave with a saved signal layout
+make gtkwave     # default waveform view: randomized soak (make vlt-rand), opened in GTKWave
+                 # with a saved signal layout; see below
+make directed-gtkwave # make vcd, then open the directed-TB VCD in GTKWave with a saved layout
 make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd
 make vlt-rand    # randomized waveform-debug run (Verilator --trace --assert); see below
 make cocotb      # 12 cocotb OSS UVM-equivalent tests (Icarus VPI)
@@ -119,29 +121,30 @@ or `make -C verification/formal cxl_lpddr5x_bridge`.
 
 A full **UVM** testbench lives in `verification/uvm/` for use with commercial
 simulators (Cadence Xcelium): `make uvm` (or `make -C verification/uvm
-[smoke|random|err_inj]`). It is intentionally **not** part of the OSS CI gate and
-no-ops when `xrun` is absent — see [verification/uvm/README.md](verification/uvm/README.md).
+[smoke|random|err_inj]`; no test specified defaults to `random`, the randomized
+soak). It is intentionally **not** part of the OSS CI gate and no-ops when
+`xrun` is absent — see [verification/uvm/README.md](verification/uvm/README.md).
 
 ### Waveform debugging
 
-Two ways to get a VCD for GTKWave:
-
-```bash
-make gtkwave      # Icarus directed TB (scoreboard, clock-ratio sweeps) + saved layout
-make vlt-rand     # randomized Verilator run tuned for waveform reading
-gtkwave sim/obj_dir_rand/waves.vcd
-```
-
-`make vlt-rand` (`sim/sim_rand.cpp`) drives randomized, protocol-legal traffic —
-random opcode mix, valid gaps, sink backpressure on both egress ports, link-down
-drain windows, and error-injection pulses — and dumps a short, navigable VCD. It
-runs under Verilator `--trace --assert`, so the interface SVA is live and a
+`make gtkwave` is the default, no-argument waveform view — it's `make
+vlt-rand-gtkwave` under the hood: a randomized Verilator run
+(`sim/sim_rand.cpp`) opened in GTKWave with a saved signal layout
+(`sim/cxl_lpddr5x_bridge_rand.gtkw`), grouping clocks/reset/link control and
+the four valid/ready ports plus status counters. It drives randomized,
+protocol-legal traffic — random opcode mix, valid gaps, sink backpressure on
+both egress ports, link-down drain windows, and error-injection pulses — and
+dumps a short, navigable VCD (comfortably more than 5 transactions per run).
+It runs under Verilator `--trace --assert`, so the interface SVA is live and a
 protocol violation aborts with the VCD intact. Runs are reproducible and print
 cycle-stamped event markers (sustained backpressure, link up/down, `drain_done`,
 error pulses) so you can jump straight to the interesting region:
 
 ```bash
+make gtkwave                                  # default: randomized soak + saved layout
 make vlt-rand RAND_SEED=42 RAND_CYCLES=4000   # the seed is printed and replayable
+make vlt-rand-gtkwave RAND_SEED=42            # same, then open in GTKWave
+make directed-gtkwave                         # Icarus directed TB (scoreboard, clock-ratio sweeps) + saved layout
 ```
 
 ## Performance characterization
