@@ -9,11 +9,12 @@ run in CI because it needs a licensed UVM simulator.
 ## Running
 
 ```bash
+make -C verification/uvm            # default (no test specified): randomized soak
 make -C verification/uvm smoke      # every opcode + a response burst (directed)
-make -C verification/uvm random     # randomized soak with backpressure
+make -C verification/uvm random     # randomized soak with backpressure (same as the bare default)
 make -C verification/uvm err_inj    # error-injection windows
 make -C verification/uvm run  UVM_TEST=cxl_lpddr5x_random_test SEED=7 UVM_VERBOSITY=UVM_HIGH
-make -C verification/uvm waves UVM_TEST=cxl_lpddr5x_random_test   # + SHM waveform (SimVision)
+make -C verification/uvm waves UVM_TEST=cxl_lpddr5x_random_test   # + SHM waveform (SimVision); also the default test
 ```
 
 If `xrun` is not on `PATH`, every target prints a notice and exits 0, so an

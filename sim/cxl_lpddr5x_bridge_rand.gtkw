@@ -1,0 +1,64 @@
+[*]
+[*] GTKWave save file — cxl_lpddr5x_bridge randomized waveform-debug run
+[*] Opened by `make gtkwave` / `make vlt-rand-gtkwave` (repo root).
+[*] Loaded alongside sim/obj_dir_rand/waves.vcd (make vlt-rand, sim/sim_rand.cpp);
+[*] groups the four valid/ready ports, clocks/reset/link control, and the
+[*] status counters so the c2m and m2c paths read top-down. sim_rand.cpp prints
+[*] cycle-stamped event markers (backpressure, link up/down, drain_done, error
+[*] pulses) on stdout to help jump to the interesting region.
+[*]
+[dumpfile] "sim/obj_dir_rand/waves.vcd"
+[timestart] 0
+[size] 1600 900
+[pos] -1 -1
+[treeopen] cxl_lpddr5x_bridge.
+[sst_width] 260
+[signals_width] 300
+[sst_expanded] 1
+[sst_vpaned_height] 350
+@200
+-clocks / reset / link control
+@28
+cxl_lpddr5x_bridge.clk
+cxl_lpddr5x_bridge.mem_clk
+cxl_lpddr5x_bridge.rst_n
+cxl_lpddr5x_bridge.link_up
+cxl_lpddr5x_bridge.err_inj_en
+cxl_lpddr5x_bridge.drain_done
+@200
+-c2m request: CXL ingress (host -> bridge)
+@28
+cxl_lpddr5x_bridge.cxl_in_valid
+cxl_lpddr5x_bridge.cxl_in_ready
+@22
+cxl_lpddr5x_bridge.cxl_in_data[63:0]
+@200
+-c2m request: LPDDR5X egress (bridge -> mem)
+@28
+cxl_lpddr5x_bridge.lp_out_valid
+cxl_lpddr5x_bridge.lp_out_ready
+@22
+cxl_lpddr5x_bridge.lp_out_data[63:0]
+@200
+-m2c response: LPDDR5X ingress (mem -> bridge)
+@28
+cxl_lpddr5x_bridge.lp_in_valid
+cxl_lpddr5x_bridge.lp_in_ready
+@22
+cxl_lpddr5x_bridge.lp_in_data[63:0]
+@200
+-m2c response: CXL egress (bridge -> host)
+@28
+cxl_lpddr5x_bridge.cxl_out_valid
+cxl_lpddr5x_bridge.cxl_out_ready
+@22
+cxl_lpddr5x_bridge.cxl_out_data[63:0]
+@200
+-status counters
+@22
+cxl_lpddr5x_bridge.crc_err_cnt[15:0]
+cxl_lpddr5x_bridge.drain_cnt[15:0]
+cxl_lpddr5x_bridge.max_occ_c2m[7:0]
+cxl_lpddr5x_bridge.max_occ_m2c[7:0]
+[pattern_trace] 1
+[pattern_trace] 0

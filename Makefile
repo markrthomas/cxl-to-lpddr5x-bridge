@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim check test regress stress vcd gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -37,12 +37,15 @@ help:
 	@echo "  make test      — alias for cocotb (DV_STANDARDS.md cross-repo name)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make vcd       — Icarus sim dumping a VCD (verification/directed/build/waves.vcd)"
-	@echo "  make gtkwave   — make vcd, then open the VCD in GTKWave with a saved signal layout"
+	@echo "  make gtkwave   — default waveform view: make vlt-rand, then open it in GTKWave"
+	@echo "                   with a saved signal layout (sim/cxl_lpddr5x_bridge_rand.gtkw)"
+	@echo "  make directed-gtkwave — make vcd, then open the directed-TB VCD in GTKWave"
+	@echo "                   with a saved signal layout"
 	@echo "  make vlt-vcd   — Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd"
 	@echo "  make vlt-gtkwave — make vlt-vcd, then open the Verilator VCD in GTKWave"
 	@echo "  make vlt-rand  — randomized waveform-debug run (Verilator --trace --assert);"
 	@echo "                   reproducible: make vlt-rand RAND_SEED=42 RAND_CYCLES=4000"
-	@echo "  make vlt-rand-gtkwave — make vlt-rand, then open its VCD in GTKWave"
+	@echo "  make vlt-rand-gtkwave — make vlt-rand, then open its VCD in GTKWave with a saved signal layout"
 	@echo "  make regress   — lint + sim (fast CI gate)"
 	@echo "  make coverage  — Verilator C++ coverage -> sim/coverage.info (fails below COV_MIN=$(COV_MIN)% lines)"
 	@echo "  make sva       — Verilator --assert: interface SVA on all 4 valid/ready ports"
@@ -99,9 +102,15 @@ stress:
 vcd:
 	$(MAKE) -C verification/directed vcd
 
-# Dump the VCD then open it in GTKWave with the saved signal layout
-# (verification/directed/cxl_lpddr5x_bridge.gtkw). Requires gtkwave on PATH.
-gtkwave:
+# Default single-test waveform-dump entry point: randomized soak (make
+# vlt-rand), opened in GTKWave with the saved signal layout
+# (sim/cxl_lpddr5x_bridge_rand.gtkw). Requires gtkwave on PATH. "No test
+# specified" defaults to random per DV_STANDARDS.md; use `directed-gtkwave` for
+# the fixed-vector directed TB instead.
+gtkwave: vlt-rand-gtkwave
+
+# Directed-TB waveform view (verification/directed/cxl_lpddr5x_bridge.gtkw).
+directed-gtkwave:
 	$(MAKE) -C verification/directed gtkwave
 
 # check: light local gate (DV_STANDARDS.md) — lint + directed sim, fast enough
@@ -121,8 +130,8 @@ cocotb:
 test: cocotb
 
 # Full UVM testbench (Cadence Xcelium). Commercial-simulator bench, deliberately
-# kept out of the OSS CI gate; runs the smoke test by default and degrades to a
-# graceful no-op when xrun is not installed.
+# kept out of the OSS CI gate; runs the randomized soak by default (no test
+# specified) and degrades to a graceful no-op when xrun is not installed.
 uvm:
 	$(MAKE) -C verification/uvm
 
@@ -233,9 +242,10 @@ vlt-rand:
 	( cd $(RAND_DIR) && ./sim_rand $(if $(RAND_SEED),+seed=$(RAND_SEED)) $(if $(RAND_CYCLES),+cycles=$(RAND_CYCLES)) ); \
 	echo "[VLT-RAND] $(RAND_VCD) written"
 
-# Run the randomized harness then open its VCD in GTKWave (requires gtkwave).
+# Run the randomized harness then open its VCD in GTKWave with the saved
+# signal layout (requires gtkwave). This is also the default `make gtkwave`.
 vlt-rand-gtkwave: vlt-rand
-	gtkwave $(RAND_VCD)
+	gtkwave $(RAND_VCD) sim/cxl_lpddr5x_bridge_rand.gtkw
 
 # perf: latency / throughput characterization. Drives protocol-legal CXL traffic
 # and services lp_out through the LPDDR5X bank/timing scheduler model

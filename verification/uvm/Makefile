@@ -6,14 +6,20 @@
 # graceful no-op so `make -C verification/uvm` never breaks an OSS-only checkout.
 #
 # Usage:
-#   make                       # smoke test
-#   make random                # randomized soak
+#   make                       # randomized soak (default test; no test specified)
+#   make smoke                 # directed: every opcode + a response burst
+#   make random                # randomized soak (same as the bare default)
 #   make err_inj               # error-injection
 #   make run UVM_TEST=<name> SEED=<n> UVM_VERBOSITY=UVM_HIGH
 #   make waves UVM_TEST=<name> # same, with an SHM waveform (SimVision)
+#
+# UVM_TEST is the default test for any invocation that doesn't pin one
+# explicitly (`run`, `waves`); it is the randomized soak so that "no test
+# specified" always means a random-transaction run. `smoke`/`random`/`err_inj`
+# each pin their own UVM_TEST and are unaffected by this default.
 
 XRUN          ?= xrun
-UVM_TEST      ?= cxl_lpddr5x_smoke_test
+UVM_TEST      ?= cxl_lpddr5x_random_test
 UVM_VERBOSITY ?= UVM_MEDIUM
 SEED          ?= 1
 XRUN_EXTRA    ?=
@@ -41,15 +47,17 @@ XRUN_ARGS := -uvm -sv -timescale 1ns/1ps -incdir $(SRC) -incdir . \
 
 .PHONY: all run smoke random err_inj waves clean help
 
-all: smoke
+# Default (no test specified) is the randomized soak, not the directed smoke test.
+all: random
 
 help:
 	@echo "cxl_lpddr5x_bridge UVM bench (Xcelium):"
+	@echo "  make          — cxl_lpddr5x_random_test (default: randomized soak, backpressure)"
 	@echo "  make smoke    — cxl_lpddr5x_smoke_test (every opcode + response burst)"
 	@echo "  make random   — cxl_lpddr5x_random_test (randomized soak, backpressure)"
 	@echo "  make err_inj  — cxl_lpddr5x_err_inj_test (err_inj windows; LSB-masked c2m)"
 	@echo "  make run UVM_TEST=<t> SEED=<n> UVM_VERBOSITY=<v>"
-	@echo "  make waves UVM_TEST=<t>   — run with SHM waveform (SimVision)"
+	@echo "  make waves UVM_TEST=<t>   — run with SHM waveform (SimVision); defaults to the random test"
 
 run:
 	@if command -v $(XRUN) >/dev/null 2>&1; then \

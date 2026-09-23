@@ -9,6 +9,10 @@
 #   V=~/verilator/bin/verilator ; U=~/verilator/test_regress/t/uvm
 #   ( unset VERILATOR_ROOT; make -C verification/uvm/vlt lint  VERILATOR=$V UVM_HOME=$U )
 #   ( unset VERILATOR_ROOT; make -C verification/uvm/vlt smoke VERILATOR=$V UVM_HOME=$U )
+#
+# `make -C verification/uvm/vlt` with no target (or `random`) runs the
+# randomized soak (cxl_lpddr5x_random_test) — that's the default when no test
+# is specified; `smoke` above always pins the directed smoke test regardless.
 
 VERILATOR ?= verilator
 
@@ -18,7 +22,10 @@ UVM_HDR := $(UVM_HOME)/uvm_pkg_all_v2020_3_1_dpi.svh
 UVM_DPI := $(UVM_HOME)/v2020_3_1/dpi/uvm_dpi.cc
 
 BUILD_JOBS ?= 1
-UVM_TEST   ?= cxl_lpddr5x_smoke_test
+# Default test for any invocation that doesn't pin one explicitly (`build`+`run`
+# below via `all`) is the randomized soak, so "no test specified" means random.
+# `smoke`/`random` each pin their own test and are unaffected by this default.
+UVM_TEST   ?= cxl_lpddr5x_random_test
 
 VFLAGS ?= --binary --timing --vpi -j $(BUILD_JOBS) --build-jobs $(BUILD_JOBS) \
           -Wno-fatal -Wno-COVERIGN -Wno-TIMESCALEMOD --CFLAGS -O0
@@ -50,16 +57,23 @@ define run
 	$(OBJ)/cxl_lpddr5x_tb_top/Vcxl_lpddr5x_tb_top $(UVM_PLUSARGS) +UVM_TESTNAME=$(1)
 endef
 
-.PHONY: all build smoke lint clean
+.PHONY: all build smoke random lint clean
 
-all: smoke
+# Default (no test specified) is the randomized soak, not the directed smoke test.
+all: random
 
 build:
 	$(build)
 
 # The TB top calls run_test() with no default, so the test is chosen here.
+# smoke/random pin their own UVM_TESTNAME explicitly so they're unaffected by
+# the UVM_TEST default above (CI relies on `smoke` staying the fast, directed
+# test regardless of that default).
 smoke: build
-	$(call run,$(UVM_TEST))
+	$(call run,cxl_lpddr5x_smoke_test)
+
+random: build
+	$(call run,cxl_lpddr5x_random_test)
 
 LINTFLAGS ?= --lint-only --timing -Wno-fatal -Wno-COVERIGN -Wno-TIMESCALEMOD
 lint:
