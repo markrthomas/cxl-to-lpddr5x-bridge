@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim check test regress stress vcd gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -37,8 +37,10 @@ help:
 	@echo "  make test      — alias for cocotb (DV_STANDARDS.md cross-repo name)"
 	@echo "  make stress    — Icarus simulation with heavy backpressure stress"
 	@echo "  make vcd       — Icarus sim dumping a VCD (verification/directed/build/waves.vcd)"
-	@echo "  make gtkwave   — default waveform view: make vlt-rand, then open it in GTKWave"
-	@echo "                   with a saved signal layout (sim/cxl_lpddr5x_bridge_rand.gtkw)"
+	@echo "  make wave      — default waveform view: make vlt-rand with a fresh random seed"
+	@echo "                   (RAND_SEED=<n> to replay), then open it in GTKWave with a saved"
+	@echo "                   signal layout (sim/cxl_lpddr5x_bridge_rand.gtkw), zoomed to fit"
+	@echo "  make gtkwave   — alias for wave"
 	@echo "  make directed-gtkwave — make vcd, then open the directed-TB VCD in GTKWave"
 	@echo "                   with a saved signal layout"
 	@echo "  make vlt-vcd   — Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd"
@@ -102,12 +104,23 @@ stress:
 vcd:
 	$(MAKE) -C verification/directed vcd
 
-# Default single-test waveform-dump entry point: randomized soak (make
-# vlt-rand), opened in GTKWave with the saved signal layout
-# (sim/cxl_lpddr5x_bridge_rand.gtkw). Requires gtkwave on PATH. "No test
-# specified" defaults to random per DV_STANDARDS.md; use `directed-gtkwave` for
-# the fixed-vector directed TB instead.
-gtkwave: vlt-rand-gtkwave
+# Default single-test waveform entry point: one randomized soak (make vlt-rand)
+# with a fresh seed every run — sim_rand prints it, replay with RAND_SEED=<n> —
+# opened in GTKWave with the saved signal layout (sim/cxl_lpddr5x_bridge_rand.gtkw)
+# zoomed to fit the run (sim/zoom_full.tcl). "No test specified" defaults to
+# random per DV_STANDARDS.md; use `directed-gtkwave` for the fixed-vector
+# directed TB instead. No gtkwave on PATH is a clean skip after the dump.
+WAVE_SEED := $(or $(RAND_SEED),$(shell echo $$(( $$(od -An -N4 -tu4 /dev/urandom) % 2147483646 + 1 ))))
+wave:
+	@$(MAKE) --no-print-directory vlt-rand RAND_SEED=$(WAVE_SEED)
+	@if command -v gtkwave >/dev/null 2>&1; then \
+		echo "[WAVE] opening $(RAND_VCD) (seed $(WAVE_SEED)) with sim/cxl_lpddr5x_bridge_rand.gtkw"; \
+		exec gtkwave -S sim/zoom_full.tcl $(RAND_VCD) sim/cxl_lpddr5x_bridge_rand.gtkw; \
+	else \
+		echo "[WAVE] gtkwave not on PATH — VCD is at $(RAND_VCD) (seed $(WAVE_SEED))"; \
+	fi
+
+gtkwave: wave
 
 # Directed-TB waveform view (verification/directed/cxl_lpddr5x_bridge.gtkw).
 directed-gtkwave:
