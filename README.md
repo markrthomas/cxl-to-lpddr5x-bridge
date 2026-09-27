@@ -97,8 +97,8 @@ make test        # alias for cocotb (DV_STANDARDS.md cross-repo name)
 make regress     # Verilator lint + Icarus directed simulation (fast gate)
 make stress      # directed sim with heavy backpressure
 make vcd         # directed sim, dump waveform -> verification/directed/build/waves.vcd
-make gtkwave     # default waveform view: randomized soak (make vlt-rand), opened in GTKWave
-                 # with a saved signal layout; see below
+make wave        # default waveform view: randomized soak (make vlt-rand) with a fresh
+                 # seed, opened in GTKWave with a saved signal layout; alias: make gtkwave
 make directed-gtkwave # make vcd, then open the directed-TB VCD in GTKWave with a saved layout
 make vlt-vcd     # Verilator --trace build of sim/sim_main.cpp -> sim/obj_dir_vcd/waves.vcd
 make vlt-rand    # randomized waveform-debug run (Verilator --trace --assert); see below
@@ -127,8 +127,9 @@ soak). It is intentionally **not** part of the OSS CI gate and no-ops when
 
 ### Waveform debugging
 
-`make gtkwave` is the default, no-argument waveform view — it's `make
-vlt-rand-gtkwave` under the hood: a randomized Verilator run
+`make wave` (alias `make gtkwave`) is the default, no-argument waveform view —
+`make vlt-rand` with a fresh random seed each run, then GTKWave zoomed to fit
+the run: a randomized Verilator run
 (`sim/sim_rand.cpp`) opened in GTKWave with a saved signal layout
 (`sim/cxl_lpddr5x_bridge_rand.gtkw`), grouping clocks/reset/link control and
 the four valid/ready ports plus status counters. It drives randomized,
@@ -141,7 +142,8 @@ cycle-stamped event markers (sustained backpressure, link up/down, `drain_done`,
 error pulses) so you can jump straight to the interesting region:
 
 ```bash
-make gtkwave                                  # default: randomized soak + saved layout
+make wave                                     # default: randomized soak (new seed) + saved layout
+make wave RAND_SEED=42                        # replay a seed
 make vlt-rand RAND_SEED=42 RAND_CYCLES=4000   # the seed is printed and replayable
 make vlt-rand-gtkwave RAND_SEED=42            # same, then open in GTKWave
 make directed-gtkwave                         # Icarus directed TB (scoreboard, clock-ratio sweeps) + saved layout
