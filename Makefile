@@ -318,7 +318,11 @@ perf-selftest:
 
 # SymbiYosys formal verification (requires OSS CAD Suite or standalone sby).
 formal:
-	$(MAKE) -C verification/formal
+	@if command -v $(SBY) >/dev/null 2>&1; then \
+		$(MAKE) -C verification/formal; \
+	else \
+		echo "[FORMAL] $(SBY) not found; install SymbiYosys (OSS CAD Suite) to run formal"; \
+	fi
 
 # synth: Yosys synthesis + area/timing regression gate (beyond the earlier smoke).
 # Maps the RTL to a generic gate library (flattened), then gates on three signals:
