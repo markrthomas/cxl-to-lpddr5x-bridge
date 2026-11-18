@@ -7,7 +7,7 @@ SRC_DIR := $(PWD)/../../src
 VERILOG_SOURCES = $(addprefix $(PWD)/../../,$(shell grep -vE '^[[:space:]]*(#|$$)' $(PWD)/../../rtl.f))
 
 TOPLEVEL = cxl_lpddr5x_bridge
-MODULE   = test_cxl_lpddr5x_bridge
+MODULE   = test_cxl_lpddr5x_bridge,test_reset_handoff
 
 # SystemVerilog (function automatic) + include path for cxl_lpddr5x_bridge_defs.vh
 ICARUS_BIN_DIR ?= /usr/bin
