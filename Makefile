@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean rr-build rr rr-triage rr-replay
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -60,7 +60,11 @@ help:
 	@echo "  make perf-sweep — characterize latency/throughput vs credit + FIFO-depth settings"
 	@echo "  make cocotb    — cocotb OSS UVM-equivalent tests (Icarus VPI)"
 	@echo "  make uvm       — UVM testbench (Cadence Xcelium; no-op if xrun absent, not in CI)"
-	@echo "  make doc       — build the design-spec PDF (pandoc + LaTeX; skips if absent)"
+	@echo "  make rr-build  — build the random-regression sim once (cocotb+Icarus, verification/random/)"
+	@echo "  make rr        — random regression: make rr N=50 JOBS=4 [SEED=1] [CONFIG=<knob set>] -> verification/random/runs/<ts>/results.jsonl"
+	@echo "  make rr-triage — cluster failures by signature: make rr-triage [RUN=<dir>] (default: latest run)"
+	@echo "  make rr-replay — rerun verification/random/corpus.json (entries marked fixed must PASS)"
+	@echo "  make doc      — build the design-spec PDF (pandoc + LaTeX; skips if absent)"
 	@echo "  make ci        — regress + coverage + sva + formal + cocotb (comprehensive)"
 	@echo "  make clean     — remove simulation build artifacts"
 	@echo ""
@@ -387,11 +391,30 @@ doc:
 	$(MAKE) -C doc
 
 # Comprehensive local run.
-ci: regress coverage sva formal cocotb synth cdc
-	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc PASSED"
+ci: regress coverage sva formal cocotb synth cdc rr-replay
+	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc + rr-replay PASSED"
+
+# Random regression (verification/random/README.md): cocotb scoreboard + Icarus, seeded stimulus.
+N      ?= 10
+JOBS   ?= 2
+SEED   ?= 1
+CONFIG ?=
+RUN    ?=
+rr-build:
+	$(MAKE) -C verification/random $(CURDIR)/verification/random/build/sim.vvp
+
+rr: rr-build
+	python3 verification/random/rr.py run --n $(N) --jobs $(JOBS) --seed $(SEED) $(if $(CONFIG),--config $(CONFIG))
+
+rr-triage:
+	python3 verification/random/rr.py triage $(if $(RUN),--run $(RUN))
+
+rr-replay: rr-build
+	python3 verification/random/rr.py replay
 
 clean:
 	$(MAKE) -C verification/directed clean
+	rm -rf verification/random/build verification/random/runs verification/random/results.xml
 	-$(MAKE) -C verification/formal clean
 	-$(MAKE) -C verification/uvm clean
 	rm -rf $(COV_DIR) $(SVA_DIR) $(VCD_DIR) $(RAND_DIR) $(PERF_DIR) sim/coverage.info sim/synth.log sim/synth_netlist.v sim/cdc.log sim/tb_timing_model

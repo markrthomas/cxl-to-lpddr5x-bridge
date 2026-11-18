@@ -20,6 +20,12 @@ In an OSS-off shell (`OSS_CAD=0` / `oss-cad-off`) Verilator 5.050 is on `PATH`,
 `VERILATOR_ROOT` is unset, and `UVM_HOME` is exported — the vars/`unset` above are
 then optional. Details: `verification/uvm/vlt/README.md`.
 
+## Random regression (`verification/random`)
+`make rr-build` then `make rr N=50 JOBS=4 [SEED=1] [CONFIG=bursty]` (cocotb + Icarus, drives the existing cocotb
+scoreboard; results in `verification/random/runs/<ts>/results.jsonl`, exit non-zero on any FAIL);
+`make rr-triage [RUN=<dir>]` clusters failures; `make rr-replay` reruns `corpus.json` (part of `make ci`).
+Knobs, contract and stimulus backlog: `verification/random/README.md`.
+
 ## Agent swarms (repo notes)
 The swarm itself is the shared kit described in the block below; this repo's profile is `.claude/swarm.env`
 (envs: `sim cocotb uvm`; gate: `make check`; RTL in `src/`; no cross-check target). There is no random regression yet:
