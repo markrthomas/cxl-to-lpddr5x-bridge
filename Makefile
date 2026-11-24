@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc perf perf-sweep perf-selftest doc ci cocotb uvm clean rr-build rr rr-triage rr-replay
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc dft lp perf perf-sweep perf-selftest doc ci cocotb uvm clean rr-build rr rr-triage rr-replay
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -385,14 +385,29 @@ cdc:
 		grep -i 'Assertion failed' sim/cdc.log || true; exit 1; }; \
 	echo "[CDC] PASS: every clock-domain crossing goes through a sanctioned synchronizer"
 
+# dft: T4 DFT scan-readiness audit (Yosys, OSS — no PDK). On the synthesized netlist,
+#      asserts latch-free + no combinational loops (HARD gates) and inventories flops /
+#      reset controllability / async set-reset / RAM for scan planning. Scan insertion +
+#      ATPG + MBIST = needs-license (see syn/dft/DFT_PLAN.md).
+dft:
+	@command -v yosys >/dev/null 2>&1 || { echo "[DFT] yosys not on PATH; skipping"; exit 0; }
+	@bash $(CURDIR)/syn/dft/scan_readiness.sh
+
+# lp: T3 low-power UPF consistency lint (tclsh, OSS — no PDK). Cross-checks the IEEE-1801
+#     UPF (domains / supplies / isolation / retention / power-state table) for internal
+#     consistency. Power-aware sim + RTL<->UPF LEC = needs-license (see syn/lp/LP_PLAN.md).
+lp:
+	@command -v tclsh >/dev/null 2>&1 || { echo "[LP] tclsh not on PATH; skipping"; exit 0; }
+	@tclsh $(CURDIR)/syn/lp/upf_lint.tcl $(CURDIR)/syn/lp/cxl_lpddr5x.upf
+
 # doc: build the design-spec PDF (delegates to doc/; pandoc + a LaTeX engine).
 # Skips cleanly if pandoc / no LaTeX engine is present, so it never blocks a build.
 doc:
 	$(MAKE) -C doc
 
 # Comprehensive local run.
-ci: regress coverage sva formal cocotb synth cdc rr-replay
-	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc + rr-replay PASSED"
+ci: regress coverage sva formal cocotb synth cdc dft lp rr-replay
+	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc + dft + lp + rr-replay PASSED"
 
 # Random regression (verification/random/README.md): cocotb scoreboard + Icarus, seeded stimulus.
 N      ?= 10
