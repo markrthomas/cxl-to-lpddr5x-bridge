@@ -1,0 +1,96 @@
+# cxl_lpddr5x.upf — IEEE-1801 (UPF) power intent for the CXL <-> LPDDR5X bridge.
+#
+# Tapeout-readiness program T3 (../../../DESIGN_READINESS.md). Adopted from the sign-off
+# kit's low-power TEMPLATE, tuned to this block's LPDDR5X low-power / link-drain story.
+#
+# Authored collateral — the real run is VCS `-upf` + RTL<->UPF LEC (needs-license);
+# see LP_PLAN.md. A tool-free consistency lint runs here via `make lp`.
+#
+# NOTE: `-elements` instance paths below are the intended mapping; confirm them against
+# the synthesized hierarchy before the licensed run (the lint checks UPF *consistency*,
+# not element existence). Top `cxl_lpddr5x_bridge` has two async clock domains — CXL
+# (`clk`) and LPDDR5X (`mem_clk`). The data path async FIFOs (`u_c2m_posted`, `u_c2m_np`,
+# `u_m2c`) straddle the boundary: write port in one domain, read port in the other. The
+# mem-side read ports take the isolation; the reset-drain (`u_reset_drain`) sequences the
+# link quiesce that precedes the mem-side power-down.
+
+set_design_top cxl_lpddr5x_bridge
+
+##############################################################################
+# Power domains — the LPDDR5X low-power story.
+#   PD_AON : always-on. The CXL link side (clk): link-up tracking, credit
+#            counters and command issue stay powered so CXL link credits and
+#            flow control are maintained while the memory side sleeps.
+#   PD_MEM : switchable. The LPDDR5X command/mem side (mem_clk): reset-drain +
+#            mem-facing logic is power-gated in the LPDDR5X low-power state and
+#            woken for the next memory access.
+##############################################################################
+create_power_domain PD_AON -elements {.}
+create_power_domain PD_MEM -elements {u_mem_rst_sync u_reset_drain}
+
+##############################################################################
+# Supply network
+##############################################################################
+create_supply_port  VDD    -domain PD_AON
+create_supply_port  VSS    -domain PD_AON
+create_supply_net   VDD    -domain PD_AON
+create_supply_net   VSS    -domain PD_AON
+create_supply_net   VDD_SW -domain PD_MEM          ;# switched rail for PD_MEM
+
+# Always-on domain is tied to the permanent rails.
+set_domain_supply_net PD_AON -primary_power_net VDD    -primary_ground_net VSS
+# Switchable domain runs from the switched rail (ground is common).
+set_domain_supply_net PD_MEM -primary_power_net VDD_SW -primary_ground_net VSS
+
+##############################################################################
+# Header power switch for PD_MEM (VDD -> VDD_SW), controlled by pmu_mem_pwr_en.
+##############################################################################
+create_power_switch mem_hdr_sw \
+    -domain        PD_MEM \
+    -input_supply_port  {vin  VDD} \
+    -output_supply_port {vout VDD_SW} \
+    -control_port  {sw_en pmu_mem_pwr_en} \
+    -on_state      {on vin {sw_en}} \
+    -off_state     {off {!sw_en}}
+
+##############################################################################
+# Isolation: clamp PD_MEM outputs crossing into PD_AON (the mem-side FIFO read
+# ports and status) to 0 while PD_MEM is off, so the always-on CXL link side
+# never samples a floating memory-side value.
+##############################################################################
+set_isolation mem_iso \
+    -domain          PD_MEM \
+    -isolation_power_net VDD \
+    -isolation_ground_net VSS \
+    -clamp_value     0 \
+    -applies_to      outputs
+set_isolation_control mem_iso \
+    -domain   PD_MEM \
+    -isolation_signal pmu_mem_iso_en \
+    -isolation_sense  high \
+    -location parent
+
+##############################################################################
+# Retention: keep the mem-side credit / drain / configuration state across the
+# low-power cycle so the memory path resumes without a full re-handshake.
+##############################################################################
+set_retention mem_ret \
+    -domain      PD_MEM \
+    -retention_power_net VDD \
+    -retention_ground_net VSS
+set_retention_control mem_ret \
+    -domain      PD_MEM \
+    -save_signal    {pmu_mem_save high} \
+    -restore_signal {pmu_mem_restore high}
+
+##############################################################################
+# Power states (PST): the legal supply combinations and the P0/P1/P2 modes.
+#   P0 active   : both rails on — normal CXL<->LPDDR5X traffic.
+#   P1 drain    : PD_MEM isolated, still powered — reset-drain quiesces the link
+#                 and in-flight memory commands complete before shutoff.
+#   P2 lpddr_lp : PD_MEM rail off, mem-side state retained; LPDDR5X low-power.
+##############################################################################
+create_pst bridge_pst -supplies {VDD VDD_SW}
+add_pst_state P0_active  -pst bridge_pst -state {ON  ON}
+add_pst_state P1_drain   -pst bridge_pst -state {ON  ON}
+add_pst_state P2_lpddr_lp -pst bridge_pst -state {ON  OFF}

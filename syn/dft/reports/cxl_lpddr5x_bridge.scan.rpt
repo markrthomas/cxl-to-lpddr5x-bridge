@@ -1,0 +1,14 @@
+# cxl_lpddr5x_bridge — scan-readiness report (T4, OSS structural audit)
+# generated 2026-11-24T21:04:32Z
+
+HARD GATES
+  latch-free ................. PASS (0 D-latches)
+  no combinational loops ..... PASS (yosys check -assert)
+
+SCAN-PLANNING INVENTORY
+  flip-flops (scan length) ... 1557
+    reset-controllable ....... 157 (10%)
+    no set/reset ............. 1400
+    async set/reset .......... 157
+  latches (must be 0) ........ 0
+  memory arrays (MBIST) ...... 0

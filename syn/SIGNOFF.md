@@ -15,8 +15,8 @@ source of the canonical `synth`/`cdc` pattern now rolled to the others).
 | **T1** synthesizable | ◐ **PASS** | `make synth` → `sim/synth_netlist.v`, `sim/synth.log` | Latch-free + cell/depth ceilings. Liberty-mapped synth = `needs-pdk`. |
 | **T1-CDC** | ✅ **PASS** | `make cdc` → `sim/cdc.log` | No unsynchronized `clk`↔`mem_clk` crossing (structural Yosys audit). |
 | **T2** STA | ◐ collateral | `syn/constraints/cxl_lpddr5x.sdc`, `syn/sta/opensta.tcl` | Two async clock groups, async-reset false path, I/O budgets. Run = `needs-pdk`. |
-| **T3** low-power | ☐ open | `lp/` (to author) | LPDDR5X low-power states + link-drain gating. `needs-license`. |
-| **T4** DFT | ☐ open | `dft/` (to author) | Scan + **MBIST** for data RAMs + ATPG. `needs-license`. |
+| **T3** low-power | ◐ authored + OSS-lint | `make lp` → `syn/lp/cxl_lpddr5x.upf`, `syn/lp/LP_PLAN.md` | LPDDR5X low-power intent (PD_AON CXL link + switchable PD_MEM via link-drain); UPF consistency lint PASS (2 domains/3 supplies/iso+ret/3 PST). VCS `-upf` + RTL↔UPF LEC = `needs-license`. |
+| **T4** DFT | ◐ **PASS** (scan-ready) | `make dft` → `syn/dft/reports/`, `syn/dft/DFT_PLAN.md` | Latch-free + no comb loops; 1557 flops (10% reset-controllable — most are FIFO data, 157 async set/reset, 0 RAM at this mapping). Per-domain scan chains over `clk`/`mem_clk`. Scan stitch + ATPG (+MBIST if FIFOs → RAM) = `needs-license`. |
 | **T5** verif sign-off | ◑ strong | 12 cocotb OSS-UVM tests; 100% line cov; **unbounded formal prove** + assume-guarantee; SVA on all 4 ports | Promote to licensed UVM + perf mode; keep the formal as a first-class sign-off artifact. `needs-license` for the run. |
 | **T6** GLS + PPA | ☐ open | — | SDF GLS incl. memory-command timing; power; LEC; PPA. `needs-pdk`. |
 | **T7** integration/pkg | ☐ open | `pkg/` (to author) | IP-XACT; register/config map; LPDDR5X PHY integration guide; CXL link attach. |
