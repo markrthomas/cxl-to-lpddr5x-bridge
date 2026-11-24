@@ -260,3 +260,54 @@ Verilator + SymbiYosys + cocotb) consistent with `../DV_STANDARDS.md`.
 - Perf model extensions: FR-FCFS reordering and a read-priority write buffer have
   landed (see Completed, 2026-07-22). Remaining: a UVM-driven perf mode on a
   licensed simulator (xrun-only).
+
+---
+
+## Tapeout readiness (design sign-off)
+
+> Part of the workspace program in [`../../DESIGN_READINESS.md`](../../DESIGN_READINESS.md).
+> Gate pass criteria + tooling/PDK reality live there. Tags: **[oss-pathfind]**,
+> **[needs-license]**, **[needs-pdk]**.
+
+### Realism note specific to this block
+This block has the **strongest formal story** of the five (unbounded `prove` + k-induction +
+assume-guarantee on the top and all four leaf modules, 100% line coverage, SVA on all four
+valid/ready ports) — a real asset for T2 CDC exceptions and T5 sign-off. The gap is on the
+**interfaces**: the memory side is an abstract *"LPDDR5X-style"* interface, not a real
+LPDDR5X PHY/DFI contract, and the CXL.mem side is a compact 64-bit abstraction, not the wire
+encoding. **Both must become real at T0** before synthesis means anything. CXL and LPDDR5X
+specs are registration-gated-but-free, so this repo can stay **public** unless a JEDEC LPDDR5X
+clause needs reproducing verbatim.
+
+### Interface-realism prerequisites (before T1)
+- **Memory side:** replace the "LPDDR5X-style" interface with a real **LPDDR5X DFI/PHY
+  contract**, and add the **bank/timing scheduler** (bank groups, `tRC`/`tRRD`/`tFAW`,
+  refresh, WCK/CK ratio, RDQS/training hooks). The FR-FCFS/write-buffer perf model is the
+  functional seed for the scheduler.
+- **CXL side:** decide whether this tapeout implements the **CXL.mem M2S/S2M wire encoding**
+  or stays a controller-internal abstraction with a separate PHY/link block; freeze the choice.
+
+### T-gate map
+- **T0 Spec freeze** — real LPDDR5X DFI/PHY + CXL.mem interface decision above; cite the CXL
+  rev and `JESD209-5` (LPDDR5X) clauses; freeze credit/CRC parameters.
+- **T1 Synth [needs-pdk]** — synth `src/`; **compiled-RAM** strategy for the data buffers;
+  sign-off lint; structural CDC on the async FIFOs across the 1:1 / 2:1 / 1:3 clock ratios
+  (the formal proofs already pin the ordering/occupancy invariants — reuse as CDC intent).
+- **T2 STA [needs-pdk]** — SDC for the CXL clk ↔ memory clk crossings and the multi-ratio
+  cases; WCK timing to the LPDDR5X PHY; Fmax per domain. Lift CDC false-paths from the formal
+  assume-guarantee contract.
+- **T3 Low-power [needs-license]** — UPF for LPDDR5X low-power states (self-refresh / deep
+  sleep) and link-drain power gating; power-aware run; LEC.
+- **T4 DFT [needs-license]** — scan over the credit/FSM logic; **MBIST** for the data RAMs; ATPG.
+- **T5 Verif sign-off [needs-license]** — promote the 12 cocotb OSS-UVM-equivalent tests + SVA
+  to a **licensed UVM** run with the perf mode; document the coverage model; keep the unbounded
+  formal as a first-class sign-off artifact.
+- **T6 GLS + PPA [needs-pdk]** — SDF GLS incl. memory-command timing; power; LEC; PPA.
+- **T7 Integration/pkg** — IP-XACT; register/config map; **LPDDR5X PHY integration guide**;
+  CXL link attach; tagged release.
+
+### Ordered milestones
+1. T0 interface realism: LPDDR5X DFI/PHY + scheduler, CXL.mem encoding decision — **the long
+   pole; do first.** 2. Shared kit (pathfound on #3). 3. T5 licensed UVM + perf mode (formal
+   already strong). 4. T1/T2 synth + CDC/STA (reuse formal CDC contract). 5. T3/T4 low-power +
+   DFT + MBIST. 6. T6 GLS/PPA. 7. T7 package + tag.
