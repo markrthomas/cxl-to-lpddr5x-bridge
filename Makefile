@@ -18,7 +18,7 @@ COV_DIR := sim/obj_dir_cov
 # Minimum line-coverage floor enforced by `make coverage` (DV_STANDARDS.md).
 COV_MIN ?= 80
 
-.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc dft lp perf perf-sweep perf-selftest doc ci cocotb uvm clean rr-build rr rr-triage rr-replay
+.PHONY: help lint verible-lint verible-format sim check test regress stress vcd wave gtkwave directed-gtkwave vlt-vcd vlt-gtkwave vlt-rand vlt-rand-gtkwave coverage sva formal synth cdc dft lp ppa pkg gls perf perf-sweep perf-selftest doc ci cocotb uvm clean rr-build rr rr-triage rr-replay
 
 # Verible style-lint / format target the synthesizable RTL (the rtl.f source list,
 # = BRIDGE_SRCS); the directed TB / checker are verification-only and not linted.
@@ -400,14 +400,34 @@ lp:
 	@command -v tclsh >/dev/null 2>&1 || { echo "[LP] tclsh not on PATH; skipping"; exit 0; }
 	@tclsh $(CURDIR)/syn/lp/upf_lint.tcl $(CURDIR)/syn/lp/cxl_lpddr5x.upf
 
+# ppa: T6 PPA proxy baseline (Yosys, OSS — no PDK). Tracks generic cells + flops (area) and
+#      logic depth / ltp (timing). Real area/power/timing = needs-pdk (syn/ppa/PPA_PLAN.md).
+ppa:
+	@bash $(CURDIR)/syn/ppa/ppa.sh
+
+# pkg: T7 packaging gate (OSS). Validates the IP-XACT (IEEE 1685-2014) component:
+#      well-formed + structural + a hard IP-XACT<->RTL model-port match (fails on drift).
+pkg:
+	@command -v xmllint >/dev/null 2>&1 || { echo "[PKG] xmllint not on PATH; skipping"; exit 0; }
+	@bash $(CURDIR)/pkg/check_ipxact.sh
+
+# gls: T6 zero-delay gate-level sim (Yosys + Icarus, OSS). NOTE: for this block the OSS
+#      generic-synth GLS does NOT close — the unreset dual-clock async-FIFO RAM (lowered to
+#      registers) reads X in the smoke test (X-pessimism, not a design bug: RTL sim + formal
+#      pass). See syn/gls/T6_PLAN.md. The gate is authored here but is NOT part of `ci` /
+#      the green path; the clean run (SDF GLS + compiled RAM model) is needs-pdk.
+gls:
+	@bash $(CURDIR)/syn/gls/gls.sh
+
 # doc: build the design-spec PDF (delegates to doc/; pandoc + a LaTeX engine).
 # Skips cleanly if pandoc / no LaTeX engine is present, so it never blocks a build.
 doc:
 	$(MAKE) -C doc
 
 # Comprehensive local run.
-ci: regress coverage sva formal cocotb synth cdc dft lp rr-replay
-	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc + dft + lp + rr-replay PASSED"
+ci: regress coverage sva formal cocotb synth cdc dft lp ppa pkg rr-replay
+	@echo "[CI] regress + coverage + sva + formal + cocotb + synth + cdc + dft + lp + ppa + pkg + rr-replay PASSED"
+	@echo "[CI] note: T6 gls is authored but not in the green path (needs-pdk; see syn/gls/T6_PLAN.md)"
 
 # Random regression (verification/random/README.md): cocotb scoreboard + Icarus, seeded stimulus.
 N      ?= 10

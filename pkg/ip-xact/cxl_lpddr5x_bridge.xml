@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  IP-XACT (IEEE 1685-2014) component for cxl_lpddr5x_bridge.
+  Tapeout-readiness program T7 (DESIGN_READINESS.md) packaging deliverable, adopted
+  from the shared sign-off kit (pathfound on IP-axi-to-2apbs). Ports generated verbatim
+  from the RTL header so make pkg (pkg/check_ipxact.sh) port-sync passes by construction;
+  bus interfaces + parameters hand-authored from the interface. The CXL/LPDDR data
+  channels are modelled as vendor DataStream valid/ready/data interfaces; clocks/reset
+  reference the AMBA defs by VLNV (resolved from the integrator's library).
+-->
+<ipxact:component xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ipxact:vendor>markrthomas</ipxact:vendor>
+  <ipxact:library>cxl_lpddr5x_bridge</ipxact:library>
+  <ipxact:name>cxl_lpddr5x_bridge</ipxact:name>
+  <ipxact:version>1.0</ipxact:version>
+
+  <ipxact:busInterfaces>
+    <ipxact:busInterface>
+      <ipxact:name>CXL_RX</ipxact:name>
+      <ipxact:busType vendor="markrthomas" library="stream" name="DataStream" version="1.0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="markrthomas" library="stream" name="DataStream_rtl" version="1.0"/>
+        <ipxact:portMaps>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>VALID</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_in_valid</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>DATA</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_in_data</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>READY</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_in_ready</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+        </ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:slave/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>LP_TX</ipxact:name>
+      <ipxact:busType vendor="markrthomas" library="stream" name="DataStream" version="1.0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="markrthomas" library="stream" name="DataStream_rtl" version="1.0"/>
+        <ipxact:portMaps>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>VALID</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_out_valid</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>DATA</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_out_data</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>READY</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_out_ready</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+        </ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:master/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>LP_RX</ipxact:name>
+      <ipxact:busType vendor="markrthomas" library="stream" name="DataStream" version="1.0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="markrthomas" library="stream" name="DataStream_rtl" version="1.0"/>
+        <ipxact:portMaps>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>VALID</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_in_valid</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>DATA</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_in_data</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>READY</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>lp_in_ready</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+        </ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:slave/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>CXL_TX</ipxact:name>
+      <ipxact:busType vendor="markrthomas" library="stream" name="DataStream" version="1.0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="markrthomas" library="stream" name="DataStream_rtl" version="1.0"/>
+        <ipxact:portMaps>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>VALID</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_out_valid</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>DATA</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_out_data</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+            <ipxact:portMap><ipxact:logicalPort><ipxact:name>READY</ipxact:name></ipxact:logicalPort><ipxact:physicalPort><ipxact:name>cxl_out_ready</ipxact:name></ipxact:physicalPort></ipxact:portMap>
+        </ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:master/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>clk</ipxact:name>
+      <ipxact:busType vendor="amba.com" library="AMBA" name="AMBAClock" version="r0p0_0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="amba.com" library="AMBA" name="AMBAClock_rtl" version="r0p0_0"/>
+        <ipxact:portMaps><ipxact:portMap><ipxact:logicalPort><ipxact:name>CLK</ipxact:name></ipxact:logicalPort>
+          <ipxact:physicalPort><ipxact:name>clk</ipxact:name></ipxact:physicalPort></ipxact:portMap></ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:slave/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>mem_clk</ipxact:name>
+      <ipxact:busType vendor="amba.com" library="AMBA" name="AMBAClock" version="r0p0_0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="amba.com" library="AMBA" name="AMBAClock_rtl" version="r0p0_0"/>
+        <ipxact:portMaps><ipxact:portMap><ipxact:logicalPort><ipxact:name>CLK</ipxact:name></ipxact:logicalPort>
+          <ipxact:physicalPort><ipxact:name>mem_clk</ipxact:name></ipxact:physicalPort></ipxact:portMap></ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:slave/>
+    </ipxact:busInterface>
+    <ipxact:busInterface>
+      <ipxact:name>rst_n</ipxact:name>
+      <ipxact:busType vendor="amba.com" library="AMBA" name="AMBAReset" version="r0p0_0"/>
+      <ipxact:abstractionTypes><ipxact:abstractionType>
+        <ipxact:abstractionRef vendor="amba.com" library="AMBA" name="AMBAReset_rtl" version="r0p0_0"/>
+        <ipxact:portMaps><ipxact:portMap><ipxact:logicalPort><ipxact:name>RESETn</ipxact:name></ipxact:logicalPort>
+          <ipxact:physicalPort><ipxact:name>rst_n</ipxact:name></ipxact:physicalPort></ipxact:portMap></ipxact:portMaps>
+      </ipxact:abstractionType></ipxact:abstractionTypes>
+      <ipxact:slave/>
+    </ipxact:busInterface>
+  </ipxact:busInterfaces>
+
+  <ipxact:model>
+    <ipxact:ports>
+      <ipxact:port><ipxact:name>clk</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>mem_clk</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>rst_n</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_in_valid</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_in_data</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>WIDTH-1</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_in_ready</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_out_valid</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_out_data</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>WIDTH-1</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_out_ready</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_in_valid</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_in_data</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>WIDTH-1</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>lp_in_ready</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_out_valid</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_out_data</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>WIDTH-1</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>cxl_out_ready</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>link_up</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>err_inj_en</ipxact:name>
+        <ipxact:wire><ipxact:direction>in</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>drain_done</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction></ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>crc_err_cnt</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>15</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>drain_cnt</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>15</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>max_occ_c2m</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>7</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+      <ipxact:port><ipxact:name>max_occ_m2c</ipxact:name>
+        <ipxact:wire><ipxact:direction>out</ipxact:direction>
+          <ipxact:vectors><ipxact:vector><ipxact:left>7</ipxact:left><ipxact:right>0</ipxact:right></ipxact:vector></ipxact:vectors>
+        </ipxact:wire></ipxact:port>
+    </ipxact:ports>
+  </ipxact:model>
+
+  <ipxact:fileSets>
+    <ipxact:fileSet>
+      <ipxact:name>rtl</ipxact:name>
+      <ipxact:file><ipxact:name>../../src/cxl_lpddr5x_bridge.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/async_fifo.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/cdc_sync.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/credit_counter.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/credit_pulse_sync.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/reset_drain.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+      <ipxact:file><ipxact:name>../../src/reset_sync.v</ipxact:name><ipxact:fileType>verilogSource</ipxact:fileType></ipxact:file>
+    </ipxact:fileSet>
+  </ipxact:fileSets>
+
+  <ipxact:parameters>
+    <ipxact:parameter parameterId="WIDTH"><ipxact:name>WIDTH</ipxact:name><ipxact:value>64</ipxact:value></ipxact:parameter>
+    <ipxact:parameter parameterId="FIFO_DEPTH"><ipxact:name>FIFO_DEPTH</ipxact:name><ipxact:value>8</ipxact:value></ipxact:parameter>
+    <ipxact:parameter parameterId="POSTED_CREDITS"><ipxact:name>POSTED_CREDITS</ipxact:name><ipxact:value>8</ipxact:value></ipxact:parameter>
+    <ipxact:parameter parameterId="NP_CREDITS"><ipxact:name>NP_CREDITS</ipxact:name><ipxact:value>8</ipxact:value></ipxact:parameter>
+    <ipxact:parameter parameterId="RSP_CREDITS"><ipxact:name>RSP_CREDITS</ipxact:name><ipxact:value>8</ipxact:value></ipxact:parameter>
+  </ipxact:parameters>
+</ipxact:component>
