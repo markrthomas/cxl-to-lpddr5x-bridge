@@ -140,6 +140,26 @@ jobs:
       - name: T3 low-power UPF consistency lint
         run: make lp
 
+      - name: T6 PPA proxy baseline (cells / flops / logic-depth)
+        run: make ppa
+
+      # NOTE: T6 `make gls` is deliberately NOT run here. For this block the OSS generic-synth
+      # zero-delay GLS does not close (unreset dual-clock async-FIFO RAM reads X — pessimism,
+      # not a design bug: RTL sim + formal pass). It is authored (syn/gls/gls.sh) and
+      # documented (syn/gls/T6_PLAN.md); the clean run (SDF GLS + compiled RAM) is needs-pdk.
+
+      - name: T7 packaging — IP-XACT well-formed + structural + port-sync with RTL
+        run: |
+          command -v xmllint >/dev/null 2>&1 || sudo apt-get update && sudo apt-get install -y libxml2-utils
+          make pkg
+
+      - name: Upload T6 PPA report
+        uses: actions/upload-artifact@v4
+        with:
+          name: t6-ppa-report
+          path: syn/ppa/reports/
+          if-no-files-found: ignore
+
       - name: Upload gate-level netlist
         uses: actions/upload-artifact@v4
         with:
