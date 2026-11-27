@@ -19,6 +19,12 @@ set_clock_groups -asynchronous -group {clk} -group {mem_clk}
 set_false_path -from [get_ports rst_n]
 
 # I/O budgets (40% in / 40% out).
-set_input_delay  -clock clk [expr {0.40*$CXL_PERIOD}] [remove_from_collection [all_inputs] [get_ports {clk mem_clk rst_n}]]
+# PrimeTime has remove_from_collection; OpenSTA (LibreLane/OpenROAD) has delete_from_list.
+if {[llength [info commands remove_from_collection]]} {
+  set all_in [remove_from_collection [all_inputs] [get_ports {clk mem_clk rst_n}]]
+} else {
+  set all_in [delete_from_list [all_inputs] [get_ports {clk mem_clk rst_n}]]
+}
+set_input_delay  -clock clk [expr {0.40*$CXL_PERIOD}] $all_in
 set_output_delay -clock clk [expr {0.40*$CXL_PERIOD}] [all_outputs]
 # (Split outputs per true launch domain at integration; single group shown here.)

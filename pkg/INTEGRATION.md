@@ -55,11 +55,12 @@ by the `*_CREDITS` / `FIFO_DEPTH` parameters, not an address-mapped register.
   defs by VLNV; the stream interfaces reference a vendor `DataStream` def.
 - **RTL** source is referenced from the component's `fileSet`.
 - **Validate** with `make pkg` (`pkg/check_ipxact.sh`): well-formed + structural + a hard
-  IP-XACT↔RTL model-port match (22 ports; fails on drift). Full XSD: `IPXACT_XSD=… make pkg`.
+  IP-XACT↔RTL model-port match (22 ports; fails on drift). Full XSD: `make pkg-xsd`.
 
 ## Sign-off cross-reference
 
-See [`../syn/SIGNOFF.md`](../syn/SIGNOFF.md) for T0–T7. Note T6-GLS: OSS zero-delay GLS does
-not close for this block (unreset dual-clock-RAM X-pessimism — `../syn/gls/T6_PLAN.md`);
-the clean run is `needs-pdk`. Real STA / SDF GLS / PPA / scan+ATPG / power-aware sim are
-tagged there.
+See [`../syn/SIGNOFF.md`](../syn/SIGNOFF.md) for T0–T7. T6 zero-delay GLS passes (the
+earlier failure was a TB sampling race, see `../syn/gls/T6_PLAN.md`). **Integrator note:**
+sample `lp_out_*` / `cxl_out_*` at a clock edge, not on a `valid` event: valid and data
+settle in the same timestep. Full XSD: `make pkg-xsd`. Real STA / SDF GLS / PPA /
+scan+ATPG / power-aware sim are tagged there.

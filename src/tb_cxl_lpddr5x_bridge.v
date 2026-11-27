@@ -105,6 +105,14 @@ module tb_cxl_lpddr5x_bridge;
     end
   end
 
+  // Output sampling: lp_out_valid/lp_out_data (and cxl_out_*) are combinational from the
+  // same flops, so they settle in the same timestep but in different delta cycles. A
+  // compare straight after `wait (valid)` can read data before it settles; RTL sim got
+  // away with it by event ordering, the zero-delay gate netlist does not (T6 GLS, see
+  // syn/gls/T6_PLAN.md). Sample one precision step (1 ps) after valid rises: after
+  // every delta, well before the next clock edge (fastest clock: 2.5 ns half-period).
+  localparam real SETTLE_NS = 0.001;
+
   // CXL host clock: 10 ns period (100 MHz)
   always #5 clk = ~clk;
 
@@ -405,7 +413,7 @@ module tb_cxl_lpddr5x_bridge;
     while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
     cxl_in_valid = 1'b0;
 
-    wait (lp_out_valid);
+    wait (lp_out_valid); #(SETTLE_NS);
     if (lp_out_data !== expect_lp_from_cxl(pack_cxl_mem_rd(CXL_RD_OP_NORMAL, 8'h3c, 16'hbeef, 8'h04, 8'ha1, 8'h0f))) begin
       $display("FAIL: smoke mem_rd lp_out_data got %h", lp_out_data);
       $finish(1);
@@ -421,7 +429,7 @@ module tb_cxl_lpddr5x_bridge;
     while (!(lp_in_valid && lp_in_ready)) @(posedge clk);
     lp_in_valid = 1'b0;
 
-    wait (cxl_out_valid);
+    wait (cxl_out_valid); #(SETTLE_NS);
     @(posedge clk);
     if (cxl_out_data !== expect_cxl_from_lp(lp_in_data)) begin
       $display("FAIL: smoke rd_rsp cxl_out_data got %h", cxl_out_data);
@@ -438,7 +446,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_valid = 1'b1; lp_out_ready = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== expect_lp_from_cxl(pack_cxl_mem_wr(CXL_WR_OP_NORMAL, 8'h22, 16'h4000, 8'h04, 8'he5, 8'ha3))) begin
         $display("FAIL: smoke mem_wr got %h", lp_out_data); $finish(1);
       end
@@ -450,7 +458,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== expect_lp_from_cxl(pack_cxl_mem_mrr(4'h0, 8'h33, 16'h0008, 8'h01, 8'hf6, 8'h77))) begin
         $display("FAIL: smoke mrr got %h", lp_out_data); $finish(1);
       end
@@ -462,7 +470,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== expect_lp_from_cxl(pack_cxl_mem_mrw(4'h0, 8'h44, 16'h000c, 8'h01, 8'ha7, 8'h5b))) begin
         $display("FAIL: smoke mrw got %h", lp_out_data); $finish(1);
       end
@@ -562,25 +570,25 @@ module tb_cxl_lpddr5x_bridge;
       @(posedge clk);
       lp_out_ready = 1'b1;
 
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_posted0) begin
         $display("FAIL: ordering[0] want posted WR=%h got=%h", exp_posted0, lp_out_data); $finish(1);
       end
       @(posedge mem_clk); #1;
 
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_posted1) begin
         $display("FAIL: ordering[1] want posted MRW=%h got=%h", exp_posted1, lp_out_data); $finish(1);
       end
       @(posedge mem_clk); #1;
 
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_np0) begin
         $display("FAIL: ordering[2] want np RD=%h got=%h", exp_np0, lp_out_data); $finish(1);
       end
       @(posedge mem_clk); #1;
 
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_np1) begin
         $display("FAIL: ordering[3] want np MRR=%h got=%h", exp_np1, lp_out_data); $finish(1);
       end
@@ -622,7 +630,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_data = test_pkt; cxl_in_valid = 1'b1; lp_out_ready = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_pkt) begin
         $display("FAIL: granular RDA exp=%h got=%h", exp_pkt, lp_out_data); $finish(1);
       end
@@ -635,7 +643,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_pkt) begin
         $display("FAIL: granular WRA exp=%h got=%h", exp_pkt, lp_out_data); $finish(1);
       end
@@ -648,7 +656,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_data = test_pkt; cxl_in_valid = 1'b1;
       @(posedge clk); while (!(cxl_in_valid && cxl_in_ready)) @(posedge clk);
       cxl_in_valid = 1'b0;
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== exp_pkt) begin
         $display("FAIL: granular MWR exp=%h got=%h", exp_pkt, lp_out_data); $finish(1);
       end
@@ -676,7 +684,7 @@ module tb_cxl_lpddr5x_bridge;
       cxl_in_valid = 1'b0;
       err_inj_en   = 1'b0;
 
-      wait (lp_out_valid);
+      wait (lp_out_valid); #(SETTLE_NS);
       if (lp_out_data !== {expected_clean[W-1:1], ~expected_clean[0]}) begin
         $display("FAIL: err_inj: expected checksum bit 0 flipped exp=%h got=%h",
                  {expected_clean[W-1:1], ~expected_clean[0]}, lp_out_data);

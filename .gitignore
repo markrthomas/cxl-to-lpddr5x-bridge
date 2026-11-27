@@ -21,6 +21,11 @@ doc/build/
 syn/gls/build/
 syn/gls/reports/
 syn/ppa/reports/
+syn/dft/reports/
+syn/pnr/reports/
+syn/pnr/*/runs/
+.cache/
+dist/
 
 # SymbiYosys (Formal verification workdirs)
 # Generated next to the .sby files: one workdir per task, plus status dirs.
