@@ -1,0 +1,79 @@
+{
+  "//": "Release manifest for scripts/make_release.py (kit templates/signoff/release/). T0 is OPEN: no contract tag/doc yet, so the release workflow's pre-flight refuses to publish. At T0 freeze: write doc/design_contract.md, tag contract-v1.0, add it below as kind 'contract' and to required_kinds.",
+  "name": "cxl-lpddr5x-bridge",
+  "repo": "markrthomas/cxl-to-lpddr5x-bridge",
+  "contract_tag": "contract-v1.0",
+  "contract_doc": "doc/design_contract.md",
+  "report_glob": "syn/**/reports/*",
+  "required_kinds": [
+    "rtl",
+    "ip-xact",
+    "signoff"
+  ],
+  "deliverables": [
+    {
+      "path": "src/async_fifo.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/cdc_sync.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/credit_counter.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/credit_pulse_sync.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/reset_drain.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/reset_sync.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "src/cxl_lpddr5x_bridge.v",
+      "kind": "rtl"
+    },
+    {
+      "path": "rtl.f",
+      "kind": "rtl"
+    },
+    {
+      "path": "pkg/ip-xact/cxl_lpddr5x_bridge.xml",
+      "kind": "ip-xact"
+    },
+    {
+      "path": "pkg/INTEGRATION.md",
+      "kind": "doc"
+    },
+    {
+      "path": "pkg/RELEASE.md",
+      "kind": "doc"
+    },
+    {
+      "path": "syn/SIGNOFF.md",
+      "kind": "signoff"
+    },
+    {
+      "path": "syn/constraints/cxl_lpddr5x.sdc",
+      "kind": "constraints"
+    },
+    {
+      "path": "syn/lp/cxl_lpddr5x.upf",
+      "kind": "constraints"
+    },
+    {
+      "path": "README.md",
+      "kind": "doc"
+    },
+    {
+      "path": "LICENSE",
+      "kind": "license"
+    }
+  ]
+}

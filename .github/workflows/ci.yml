@@ -143,21 +143,50 @@ jobs:
       - name: T6 PPA proxy baseline (cells / flops / logic-depth)
         run: make ppa
 
-      # NOTE: T6 `make gls` is deliberately NOT run here. For this block the OSS generic-synth
-      # zero-delay GLS does not close (unreset dual-clock async-FIFO RAM reads X — pessimism,
-      # not a design bug: RTL sim + formal pass). It is authored (syn/gls/gls.sh) and
-      # documented (syn/gls/T6_PLAN.md); the clean run (SDF GLS + compiled RAM) is needs-pdk.
+      - name: T6 GLS (zero-delay gate-level sim vs the directed self-checking TB)
+        run: make gls
 
       - name: T7 packaging — IP-XACT well-formed + structural + port-sync with RTL
         run: |
-          command -v xmllint >/dev/null 2>&1 || sudo apt-get update && sudo apt-get install -y libxml2-utils
+          command -v xmllint >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y libxml2-utils; }
           make pkg
+
+      - name: Restore the IEEE 1685-2014 schema mirror (fixed standard)
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/ipxact-1685-2014
+          key: ipxact-1685-2014-xsd-v3-${{ hashFiles('pkg/ip-xact/schema/ieee-1685-2014.sha256') }}
+
+      - name: T7 IP-XACT full XSD validation (IEEE 1685-2014; Accellera, eda.org or pinned GitHub copy)
+        run: make pkg-xsd XSD_HOST_OPTIONAL=1
+
+      - name: Save the schema mirror (only once it is complete)
+        if: always() && hashFiles('.cache/ipxact-1685-2014/.complete') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/ipxact-1685-2014
+          key: ipxact-1685-2014-xsd-v3-${{ hashFiles('pkg/ip-xact/schema/ieee-1685-2014.sha256') }}
+        continue-on-error: true   # key already saved by another run
+
+      - name: T7 release bundle dry run (reproducible build + manifest verify; T0 open, so not publishable)
+        run: |
+          make release-check
+          mkdir -p dist && cp /tmp/rel-a/* dist/
+
+      - name: Upload release bundle (CI dry-run build, version 0.0.0-ci)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-dryrun
+          path: dist/
+          if-no-files-found: error
 
       - name: Upload T6 PPA report
         uses: actions/upload-artifact@v4
         with:
-          name: t6-ppa-report
-          path: syn/ppa/reports/
+          name: t6-reports
+          path: |
+            syn/gls/reports/
+            syn/ppa/reports/
           if-no-files-found: ignore
 
       - name: Upload gate-level netlist

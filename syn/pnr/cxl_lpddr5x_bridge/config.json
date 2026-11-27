@@ -1,0 +1,28 @@
+{
+  "//": "LibreLane config for cxl_lpddr5x_bridge on sky130A / sky130_fd_sc_hd (kit templates/signoff/pnr/). Two async clocks: CLOCK_PORT is the CXL clock; the SDC declares both (clk 1.0 ns, mem_clk 0.625 ns placeholders) and cuts the crossing. RTL list = rtl.f.",
+  "PDK": "sky130A",
+  "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
+  "DESIGN_NAME": "cxl_lpddr5x_bridge",
+  "VERILOG_FILES": [
+    "dir::../../../src/async_fifo.v",
+    "dir::../../../src/cdc_sync.v",
+    "dir::../../../src/credit_counter.v",
+    "dir::../../../src/credit_pulse_sync.v",
+    "dir::../../../src/reset_drain.v",
+    "dir::../../../src/reset_sync.v",
+    "dir::../../../src/cxl_lpddr5x_bridge.v"
+  ],
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 1.0,
+  "PNR_SDC_FILE": "dir::../../constraints/cxl_lpddr5x.sdc",
+  "SIGNOFF_SDC_FILE": "dir::../../constraints/cxl_lpddr5x.sdc",
+  "FP_CORE_UTIL": 40,
+  "//setup": "[\"\"] = LibreLane's setup checker matches no corner ([] would fall back to the PDK default tt); summarize.py reports setup (PNR_SETUP_GATE=1 makes it fail). LibreLane's hold checker stays on (all corners).",
+  "SETUP_VIOLATION_CORNERS": [
+    ""
+  ],
+  "//hold": "First run (CI 2026-11-27): hold met post-CTS (+0.045 ns, RSZ-0064: margin not reached) but routing cost ~0.12 ns -> ss hold -0.078 ns (FAIL). Hold is frequency-independent correctness, while setup misses come from the placeholder 1 GHz/1.6 GHz clocks, so hold repair may worsen setup (ALLOW_SETUP_VIOS) and is re-run on post-route parasitics (RUN_POST_GRT_RESIZER_TIMING, experimental in LibreLane; the job timeout bounds a hang). The hold checker stays on all corners.",
+  "PL_RESIZER_ALLOW_SETUP_VIOS": true,
+  "RUN_POST_GRT_RESIZER_TIMING": true,
+  "GRT_RESIZER_ALLOW_SETUP_VIOS": true
+}
